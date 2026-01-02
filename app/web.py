@@ -519,7 +519,20 @@ def app_insiders(
     if person:
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
-        conditions.append(func.lower(Trade.transaction_type) == tx_type.lower())
+        tx_value = tx_type.strip().lower()
+        candidates = {tx_value}
+        if tx_value.startswith("form"):
+            without_prefix = tx_value.removeprefix("form").strip()
+            if without_prefix:
+                candidates.add(without_prefix)
+        else:
+            candidates.add(f"form {tx_value}".strip())
+        conditions.append(
+            or_(
+                func.lower(Trade.transaction_type).in_(candidates),
+                func.lower(Trade.form).in_(candidates),
+            )
+        )
     if date_from:
         conditions.append(Trade.transaction_date >= date_from)
     if date_to:
@@ -612,7 +625,20 @@ def app_congress(
     if person:
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
-        conditions.append(func.lower(Trade.transaction_type) == tx_type.lower())
+        tx_value = tx_type.strip().lower()
+        candidates = {tx_value}
+        if tx_value.startswith("form"):
+            without_prefix = tx_value.removeprefix("form").strip()
+            if without_prefix:
+                candidates.add(without_prefix)
+        else:
+            candidates.add(f"form {tx_value}".strip())
+        conditions.append(
+            or_(
+                func.lower(Trade.transaction_type).in_(candidates),
+                func.lower(Trade.form).in_(candidates),
+            )
+        )
     if date_from:
         conditions.append(Trade.transaction_date >= date_from)
     if date_to:

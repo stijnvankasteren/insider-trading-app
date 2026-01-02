@@ -63,6 +63,8 @@ class Trade(Base):
 
     # "BUY" | "SELL" | etc (string for flexibility)
     transaction_type: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    # SEC form number ("4", "144", etc) or free-form label.
+    form: Mapped[Optional[str]] = mapped_column(String(32), index=True)
     transaction_date: Mapped[Optional[dt.date]] = mapped_column(Date, index=True)
     filed_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), index=True

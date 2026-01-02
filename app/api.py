@@ -7,7 +7,7 @@ import csv
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -77,7 +77,20 @@ def list_trades(
     if person:
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
-        conditions.append(func.lower(Trade.transaction_type) == tx_type.lower())
+        tx_value = tx_type.strip().lower()
+        candidates = {tx_value}
+        if tx_value.startswith("form"):
+            without_prefix = tx_value.removeprefix("form").strip()
+            if without_prefix:
+                candidates.add(without_prefix)
+        else:
+            candidates.add(f"form {tx_value}".strip())
+        conditions.append(
+            or_(
+                func.lower(Trade.transaction_type).in_(candidates),
+                func.lower(Trade.form).in_(candidates),
+            )
+        )
     if date_from:
         conditions.append(Trade.transaction_date >= date_from)
     if date_to:
@@ -111,6 +124,7 @@ def list_trades(
             "person_name": t.person_name,
             "person_slug": t.person_slug,
             "transaction_type": t.transaction_type,
+            "form": t.form,
             "transaction_date": t.transaction_date.isoformat()
             if t.transaction_date
             else None,
@@ -151,7 +165,20 @@ def export_trades_csv(
     if person:
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
-        conditions.append(func.lower(Trade.transaction_type) == tx_type.lower())
+        tx_value = tx_type.strip().lower()
+        candidates = {tx_value}
+        if tx_value.startswith("form"):
+            without_prefix = tx_value.removeprefix("form").strip()
+            if without_prefix:
+                candidates.add(without_prefix)
+        else:
+            candidates.add(f"form {tx_value}".strip())
+        conditions.append(
+            or_(
+                func.lower(Trade.transaction_type).in_(candidates),
+                func.lower(Trade.form).in_(candidates),
+            )
+        )
     if date_from:
         conditions.append(Trade.transaction_date >= date_from)
     if date_to:
@@ -178,6 +205,7 @@ def export_trades_csv(
             "company_name",
             "person_name",
             "transaction_type",
+            "form",
             "transaction_date",
             "filed_at",
             "amount_usd_low",
@@ -196,6 +224,7 @@ def export_trades_csv(
                 t.company_name or "",
                 t.person_name or "",
                 t.transaction_type or "",
+                t.form or "",
                 t.transaction_date.isoformat() if t.transaction_date else "",
                 t.filed_at.isoformat() if t.filed_at else "",
                 t.amount_usd_low or "",

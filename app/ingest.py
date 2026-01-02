@@ -108,6 +108,7 @@ def _make_external_id(payload: dict[str, Any]) -> str:
         "company_name": payload.get("company_name"),
         "person_name": payload.get("person_name"),
         "transaction_type": payload.get("transaction_type"),
+        "form": payload.get("form"),
         "transaction_date": payload.get("transaction_date"),
         "filed_at": payload.get("filed_at"),
         "amount_usd_low": payload.get("amount_usd_low"),
@@ -183,6 +184,26 @@ def ingest_trades(
             if not tx_type_value:
                 tx_type_value = None
 
+        form_value = raw.get("form") or raw.get("issuerForm") or raw.get("reportingForm")
+        if isinstance(form_value, bool):
+            form_value = None
+        elif isinstance(form_value, (int, float)):
+            form_value = str(int(form_value))
+        if isinstance(form_value, str):
+            form_value = form_value.strip()
+            if not form_value:
+                form_value = None
+            elif not re.match(r"^form\\b", form_value, flags=re.IGNORECASE):
+                form_value = f"FORM {form_value}"
+
+        if (
+            not form_value
+            and isinstance(tx_type_value, str)
+            and re.match(r"^form\\b", tx_type_value, flags=re.IGNORECASE)
+        ):
+            form_value = tx_type_value
+            tx_type_value = None
+
         payload: dict[str, Any] = {
             "source": source,
             "external_id": raw.get("external_id") or raw.get("externalId"),
@@ -190,6 +211,7 @@ def ingest_trades(
             "company_name": raw.get("company_name") or raw.get("companyName"),
             "person_name": person_name_value,
             "transaction_type": tx_type_value,
+            "form": form_value,
             "transaction_date": _parse_date(
                 raw.get("transaction_date") or raw.get("transactionDate")
             ),
@@ -221,6 +243,7 @@ def ingest_trades(
                 "person_name",
                 "person_slug",
                 "transaction_type",
+                "form",
                 "transaction_date",
                 "filed_at",
                 "amount_usd_low",
@@ -244,6 +267,7 @@ def ingest_trades(
                     person_name=payload.get("person_name"),
                     person_slug=payload.get("person_slug"),
                     transaction_type=payload.get("transaction_type"),
+                    form=payload.get("form"),
                     transaction_date=payload.get("transaction_date"),
                     filed_at=payload.get("filed_at"),
                     amount_usd_low=payload.get("amount_usd_low"),

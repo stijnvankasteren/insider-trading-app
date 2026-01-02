@@ -94,6 +94,7 @@
               <th class="px-4 py-3">Ticker</th>
               <th class="px-4 py-3">Person</th>
               <th class="px-4 py-3">Type</th>
+              <th class="px-4 py-3">Form</th>
               <th class="px-4 py-3">Amount</th>
             </tr>
           </thead>
@@ -124,6 +125,9 @@
                   {{ t.transaction_type or "—" }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                  {{ t.form or "—" }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
                   {% if t.amount_usd_low or t.amount_usd_high %}
                     ${{ t.amount_usd_low or "?" }} – ${{ t.amount_usd_high or "?" }}
                   {% else %}
@@ -138,4 +142,3 @@
     {% endif %}
   </div>
 {% endblock %}
-
