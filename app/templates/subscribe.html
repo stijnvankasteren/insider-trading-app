@@ -1,16 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="mx-auto max-w-md">
-    <h1 class="text-2xl font-semibold tracking-tight">Login</h1>
+    <h1 class="text-2xl font-semibold tracking-tight">Subscribe</h1>
     <p class="mt-2 text-sm text-slate-400">
-      Log in with your account email and password. (Admin can also log in with the app password.)
+      Get product updates and new data source announcements.
     </p>
+
+    {% if ok %}
+      <div class="mt-6 rounded-md border border-emerald-900/60 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">
+        You're subscribed. Thanks!
+      </div>
+    {% endif %}
 
     <form method="post" class="mt-6 rounded-xl border border-slate-800 bg-slate-900/20 p-4">
       {% if csrf_token %}
         <input type="hidden" name="csrf" value="{{ csrf_token }}" />
       {% endif %}
-      <input type="hidden" name="next" value="{{ next }}" />
 
       <label class="text-xs text-slate-400">Email</label>
       <input
@@ -19,14 +24,6 @@
         name="email"
         value="{{ email }}"
         placeholder="you@company.com"
-      />
-
-      <label class="text-xs text-slate-400">Password</label>
-      <input
-        class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
-        type="password"
-        name="password"
-        placeholder="••••••••"
         required
       />
 
@@ -40,13 +37,12 @@
         class="mt-4 w-full rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
         type="submit"
       >
-        Continue
+        Subscribe
       </button>
     </form>
 
-    <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
-      <a class="hover:text-slate-300" href="{{ signup_url }}">Create an account</a>
-      <span>Admin: set <span class="font-mono">APP_PASSWORD</span> + <span class="font-mono">SESSION_SECRET</span>.</span>
+    <div class="mt-4 text-xs text-slate-500">
+      Want access to the dashboard? <a class="hover:text-slate-300" href="/signup">Create an account</a>.
     </div>
   </div>
 {% endblock %}

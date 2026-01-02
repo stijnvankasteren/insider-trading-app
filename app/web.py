@@ -4,6 +4,9 @@ import datetime as dt
 import math
 import re
 import secrets
+import base64
+import hashlib
+import hmac
 from urllib.parse import urlencode
 
 from typing import Any, Optional
@@ -12,14 +15,17 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, sta
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Trade, WatchlistItem
+from app.models import Subscriber, Trade, User, WatchlistItem
 from app.settings import get_settings
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+_EMAIL_RE = re.compile(r"^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
 
 
 def _parse_iso_date(value: Optional[str]) -> Optional[dt.date]:
@@ -119,6 +125,35 @@ def _slugify(value: str) -> str:
     return value.strip("-")
 
 
+def _normalize_email(value: str) -> str:
+    return value.strip().lower()
+
+
+def _validate_email(value: str) -> Optional[str]:
+    value = _normalize_email(value)
+    if not value or len(value) > 320 or not _EMAIL_RE.match(value):
+        return None
+    return value
+
+
+def _hash_password(password: str, salt: bytes) -> str:
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
+    return base64.urlsafe_b64encode(derived).decode("ascii").rstrip("=")
+
+
+def _new_salt() -> bytes:
+    return secrets.token_bytes(16)
+
+
+def _salt_to_str(salt: bytes) -> str:
+    return base64.urlsafe_b64encode(salt).decode("ascii").rstrip("=")
+
+
+def _salt_from_str(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
 @router.get("/", response_class=HTMLResponse)
 def landing(request: Request):
     return _render(
@@ -156,29 +191,83 @@ def login(request: Request, next: str = "/app"):
     return _render(
         request,
         "login.html",
-        {"page_title": "Login", "next": next, "error": None},
+        {
+            "page_title": "Login",
+            "next": next,
+            "error": None,
+            "email": "",
+            "signup_url": _build_url("/signup", {"next": next}),
+        },
     )
 
 
 @router.post("/login", response_class=HTMLResponse)
 def login_submit(
     request: Request,
+    csrf: Optional[str] = Form(None),
+    email: str = Form(""),
     password: str = Form(...),
     next: str = Form("/app"),
+    db: Session = Depends(get_db),
 ):
     settings = get_settings()
     if settings.auth_disabled:
         return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+    _require_csrf(request, csrf)
     if not settings.session_secret:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="SESSION_SECRET not configured",
         )
+
+    normalized_email = _validate_email(email) if email else None
+    if normalized_email:
+        user = db.scalar(select(User).where(User.email == normalized_email))
+        if not user:
+            return _render(
+                request,
+                "login.html",
+                {
+                    "page_title": "Login",
+                    "next": next,
+                    "email": normalized_email,
+                    "signup_url": _build_url("/signup", {"next": next}),
+                    "error": "Invalid email or password.",
+                },
+            )
+        salt = _salt_from_str(user.password_salt)
+        expected = _hash_password(password, salt)
+        if not hmac.compare_digest(expected, user.password_hash):
+            return _render(
+                request,
+                "login.html",
+                {
+                    "page_title": "Login",
+                    "next": next,
+                    "email": normalized_email,
+                    "signup_url": _build_url("/signup", {"next": next}),
+                    "error": "Invalid email or password.",
+                },
+            )
+
+        request.session.clear()
+        request.session["user"] = normalized_email
+        request.session["csrf"] = secrets.token_urlsafe(32)
+        return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+
     if not settings.app_password:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="APP_PASSWORD not configured",
+        return _render(
+            request,
+            "login.html",
+            {
+                "page_title": "Login",
+                "next": next,
+                "email": "",
+                "signup_url": _build_url("/signup", {"next": next}),
+                "error": "No account email given, and APP_PASSWORD is not configured for admin login.",
+            },
         )
+
     if password != settings.app_password:
         return _render(
             request,
@@ -186,6 +275,8 @@ def login_submit(
             {
                 "page_title": "Login",
                 "next": next,
+                "email": "",
+                "signup_url": _build_url("/signup", {"next": next}),
                 "error": "Invalid password.",
             },
         )
@@ -201,6 +292,162 @@ def logout(request: Request):
     if "session" in request.scope:
         request.session.clear()
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/subscribe", response_class=HTMLResponse)
+def subscribe(request: Request, ok: int = 0):
+    return _render(
+        request,
+        "subscribe.html",
+        {
+            "page_title": "Subscribe",
+            "ok": bool(ok),
+            "error": "",
+            "email": "",
+        },
+    )
+
+
+@router.post("/subscribe", response_class=HTMLResponse)
+def subscribe_submit(
+    request: Request,
+    email: str = Form(...),
+    csrf: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    if "session" in request.scope:
+        _require_csrf(request, csrf)
+    normalized_email = _validate_email(email)
+    if not normalized_email:
+        return _render(
+            request,
+            "subscribe.html",
+            {
+                "page_title": "Subscribe",
+                "ok": False,
+                "error": "Please enter a valid email address.",
+                "email": email,
+            },
+        )
+    try:
+        db.add(Subscriber(email=normalized_email))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+    return RedirectResponse(url="/subscribe?ok=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/signup", response_class=HTMLResponse)
+def signup(request: Request, next: str = "/app"):
+    return _render(
+        request,
+        "signup.html",
+        {
+            "page_title": "Create account",
+            "next": next,
+            "error": None,
+            "email": "",
+            "login_url": _build_url("/login", {"next": next}),
+        },
+    )
+
+
+@router.post("/signup", response_class=HTMLResponse)
+def signup_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    subscribe_updates: Optional[str] = Form(None),
+    next: str = Form("/app"),
+    csrf: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    if "session" in request.scope:
+        _require_csrf(request, csrf)
+
+    normalized_email = _validate_email(email)
+    if not normalized_email:
+        return _render(
+            request,
+            "signup.html",
+            {
+                "page_title": "Create account",
+                "next": next,
+                "email": email,
+                "login_url": _build_url("/login", {"next": next}),
+                "error": "Please enter a valid email address.",
+            },
+        )
+    if len(password) < 8:
+        return _render(
+            request,
+            "signup.html",
+            {
+                "page_title": "Create account",
+                "next": next,
+                "email": normalized_email,
+                "login_url": _build_url("/login", {"next": next}),
+                "error": "Password must be at least 8 characters.",
+            },
+        )
+    if password != password_confirm:
+        return _render(
+            request,
+            "signup.html",
+            {
+                "page_title": "Create account",
+                "next": next,
+                "email": normalized_email,
+                "login_url": _build_url("/login", {"next": next}),
+                "error": "Passwords do not match.",
+            },
+        )
+
+    existing = db.scalar(select(User).where(User.email == normalized_email))
+    if existing:
+        return _render(
+            request,
+            "signup.html",
+            {
+                "page_title": "Create account",
+                "next": next,
+                "email": normalized_email,
+                "login_url": _build_url("/login", {"next": next}),
+                "error": "An account with this email already exists. Try logging in.",
+            },
+        )
+
+    salt = _new_salt()
+    user = User(
+        email=normalized_email,
+        password_salt=_salt_to_str(salt),
+        password_hash=_hash_password(password, salt),
+    )
+    db.add(user)
+    if subscribe_updates:
+        db.add(Subscriber(email=normalized_email))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return _render(
+            request,
+            "signup.html",
+            {
+                "page_title": "Create account",
+                "next": next,
+                "email": normalized_email,
+                "login_url": _build_url("/login", {"next": next}),
+                "error": "Could not create account. Try a different email.",
+            },
+        )
+
+    if "session" in request.scope:
+        request.session.clear()
+        request.session["user"] = normalized_email
+        request.session["csrf"] = secrets.token_urlsafe(32)
+    return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/app", response_class=HTMLResponse)

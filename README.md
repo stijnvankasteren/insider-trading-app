@@ -24,10 +24,13 @@ Open:
 
 Set in `.env`:
 - `AUTH_DISABLED=false`
-- `APP_PASSWORD=...`
 - `SESSION_SECRET=...` (long random string)
 
-Then open `http://localhost:8000/login`.
+Then create an account at `http://localhost:8000/signup` and log in at `http://localhost:8000/login`.
+
+Optional (admin login via shared password):
+- `APP_PASSWORD=...`
+Admin can log in by leaving the email empty on `/login`.
 
 ## Ingest from n8n
 

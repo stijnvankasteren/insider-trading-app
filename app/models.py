@@ -16,6 +16,34 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    password_salt: Mapped[str] = mapped_column(String(64))
+    password_hash: Mapped[str] = mapped_column(String(128))
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class Subscriber(Base):
+    __tablename__ = "subscribers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
 class Trade(Base):
     __tablename__ = "trades"
 

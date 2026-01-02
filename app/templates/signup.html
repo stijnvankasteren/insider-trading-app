@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="mx-auto max-w-md">
-    <h1 class="text-2xl font-semibold tracking-tight">Login</h1>
+    <h1 class="text-2xl font-semibold tracking-tight">Create account</h1>
     <p class="mt-2 text-sm text-slate-400">
-      Log in with your account email and password. (Admin can also log in with the app password.)
+      Create an account to access the dashboard.
     </p>
 
     <form method="post" class="mt-6 rounded-xl border border-slate-800 bg-slate-900/20 p-4">
@@ -19,16 +19,37 @@
         name="email"
         value="{{ email }}"
         placeholder="you@company.com"
+        required
       />
 
-      <label class="text-xs text-slate-400">Password</label>
+      <label class="mt-4 block text-xs text-slate-400">Password</label>
       <input
         class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
         type="password"
         name="password"
-        placeholder="••••••••"
+        placeholder="At least 8 characters"
         required
       />
+
+      <label class="mt-4 block text-xs text-slate-400">Confirm password</label>
+      <input
+        class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+        type="password"
+        name="password_confirm"
+        placeholder="Repeat password"
+        required
+      />
+
+      <label class="mt-4 flex items-center gap-2 text-sm text-slate-300">
+        <input
+          type="checkbox"
+          name="subscribe_updates"
+          value="1"
+          checked
+          class="h-4 w-4 rounded border-slate-700 bg-slate-950"
+        />
+        Email me product updates
+      </label>
 
       {% if error %}
         <div class="mt-3 rounded-md border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-200">
@@ -40,13 +61,17 @@
         class="mt-4 w-full rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
         type="submit"
       >
-        Continue
+        Create account
       </button>
+
+      <div class="mt-3 text-xs text-slate-500">
+        By creating an account you agree to the <a class="hover:text-slate-300" href="/legal/terms">Terms</a> and
+        <a class="hover:text-slate-300" href="/legal/privacy">Privacy Policy</a>.
+      </div>
     </form>
 
-    <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
-      <a class="hover:text-slate-300" href="{{ signup_url }}">Create an account</a>
-      <span>Admin: set <span class="font-mono">APP_PASSWORD</span> + <span class="font-mono">SESSION_SECRET</span>.</span>
+    <div class="mt-4 text-xs text-slate-500">
+      Already have an account? <a class="hover:text-slate-300" href="{{ login_url }}">Log in</a>.
     </div>
   </div>
 {% endblock %}

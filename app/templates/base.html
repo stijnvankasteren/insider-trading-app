@@ -13,6 +13,7 @@
         <a href="/" class="text-lg font-semibold tracking-tight">{{ app_name }}</a>
         <nav class="flex items-center gap-4 text-sm text-slate-300">
           <a class="hover:text-white" href="/pricing">Pricing</a>
+          <a class="hover:text-white" href="/subscribe">Subscribe</a>
           <a class="hover:text-white" href="/about">About</a>
           <a class="hover:text-white" href="/app">App</a>
           {% if auth_disabled %}
@@ -20,8 +21,12 @@
               Auth disabled
             </span>
           {% elif current_user %}
+            <span class="hidden rounded-md border border-slate-800 px-2 py-1 text-xs text-slate-400 md:inline">
+              {{ current_user }}
+            </span>
             <a class="hover:text-white" href="/logout">Logout</a>
           {% else %}
+            <a class="hover:text-white" href="/signup">Sign up</a>
             <a class="hover:text-white" href="/login">Login</a>
           {% endif %}
         </nav>
