@@ -1,0 +1,141 @@
+{% extends "app/_layout.html" %}
+{% block app_content %}
+  <div class="grid gap-4 md:grid-cols-2">
+    <div class="rounded-xl border border-slate-800 overflow-hidden">
+      <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+        Tickers
+      </div>
+      <div class="bg-slate-950">
+        {% if tickers|length == 0 %}
+          <div class="px-4 py-6 text-sm text-slate-400">
+            No tickers yet. Add some from <a class="underline" href="/app/search">Search</a>.
+          </div>
+        {% else %}
+          <ul class="divide-y divide-slate-900/60">
+            {% for item in tickers %}
+              <li class="flex items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <a class="font-medium hover:underline" href="/app/companies/{{ item.value }}">
+                    {{ item.value }}
+                  </a>
+                  <div class="text-xs text-slate-400">{{ item.label or "" }}</div>
+                </div>
+                <form method="post" action="/app/watchlist/remove">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="item_id" value="{{ item.id }}" />
+                  <input type="hidden" name="next" value="/app/watchlist" />
+                  <button
+                    class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+                    type="submit"
+                  >
+                    Remove
+                  </button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 overflow-hidden">
+      <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+        People
+      </div>
+      <div class="bg-slate-950">
+        {% if people|length == 0 %}
+          <div class="px-4 py-6 text-sm text-slate-400">
+            No people yet. Add some from <a class="underline" href="/app/search">Search</a>.
+          </div>
+        {% else %}
+          <ul class="divide-y divide-slate-900/60">
+            {% for item in people %}
+              <li class="flex items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <a class="font-medium hover:underline" href="/app/people/{{ item.value }}">
+                    {{ item.label or item.value }}
+                  </a>
+                  <div class="text-xs text-slate-500">{{ item.value }}</div>
+                </div>
+                <form method="post" action="/app/watchlist/remove">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="item_id" value="{{ item.id }}" />
+                  <input type="hidden" name="next" value="/app/watchlist" />
+                  <button
+                    class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+                    type="submit"
+                  >
+                    Remove
+                  </button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-8 overflow-hidden rounded-xl border border-slate-800">
+    <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+      Recent activity
+    </div>
+    {% if watchlist_trades|length == 0 %}
+      <div class="bg-slate-950 px-4 py-8 text-sm text-slate-400">
+        No watchlist trades yet.
+      </div>
+    {% else %}
+      <div class="overflow-x-auto bg-slate-950">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-900/30 text-xs uppercase tracking-wide text-slate-400">
+            <tr>
+              <th class="px-4 py-3">Date</th>
+              <th class="px-4 py-3">Source</th>
+              <th class="px-4 py-3">Ticker</th>
+              <th class="px-4 py-3">Person</th>
+              <th class="px-4 py-3">Type</th>
+              <th class="px-4 py-3">Amount</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-900/60">
+            {% for t in watchlist_trades %}
+              <tr class="hover:bg-slate-900/20">
+                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                  {{ t.transaction_date or "—" }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                  {{ t.source }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap font-medium">
+                  {% if t.ticker %}
+                    <a class="hover:underline" href="/app/companies/{{ t.ticker }}">{{ t.ticker }}</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                  {% if t.person_slug %}
+                    <a class="hover:underline" href="/app/people/{{ t.person_slug }}">{{ t.person_name or t.person_slug }}</a>
+                  {% else %}
+                    {{ t.person_name or "—" }}
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                  {{ t.transaction_type or "—" }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                  {% if t.amount_usd_low or t.amount_usd_high %}
+                    ${{ t.amount_usd_low or "?" }} – ${{ t.amount_usd_high or "?" }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+

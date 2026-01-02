@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title or app_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/site.css" />
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <header class="border-b border-slate-800">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        <a href="/" class="text-lg font-semibold tracking-tight">{{ app_name }}</a>
+        <nav class="flex items-center gap-4 text-sm text-slate-300">
+          <a class="hover:text-white" href="/pricing">Pricing</a>
+          <a class="hover:text-white" href="/about">About</a>
+          <a class="hover:text-white" href="/app">App</a>
+          {% if auth_disabled %}
+            <span class="rounded-md border border-slate-800 px-2 py-1 text-xs text-slate-400">
+              Auth disabled
+            </span>
+          {% elif current_user %}
+            <a class="hover:text-white" href="/logout">Logout</a>
+          {% else %}
+            <a class="hover:text-white" href="/login">Login</a>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-10">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="border-t border-slate-800">
+      <div class="mx-auto max-w-6xl px-4 py-8 text-xs text-slate-500">
+        Built with FastAPI. Original content/branding. <a class="hover:text-slate-300" href="/legal/privacy">Privacy</a> ·
+        <a class="hover:text-slate-300" href="/legal/terms">Terms</a>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="space-y-6">
+    <h1 class="text-3xl font-semibold tracking-tight">About</h1>
+    <p class="text-slate-300">
+      {{ app_name }} is a lightweight alternative data dashboard. It stores normalized records in a database and
+      renders fast tables, filters, and exports.
+    </p>
+    <div class="grid gap-4 md:grid-cols-2">
+      <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+        <div class="text-sm font-medium">How it works</div>
+        <p class="mt-2 text-sm text-slate-300">
+          n8n collects data from your sources and posts JSON to an ingest endpoint. The app stores it and exposes
+          UI pages like Insider Trades and Congress Trades.
+        </p>
+      </div>
+      <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+        <div class="text-sm font-medium">What’s next</div>
+        <p class="mt-2 text-sm text-slate-300">
+          Add more sources (SEC filings, government contracts), per-user accounts, and billing.
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+

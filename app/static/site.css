@@ -1,0 +1,5 @@
+/* Keep this file minimal; most styling comes from Tailwind CDN for now. */
+html {
+  color-scheme: dark;
+}
+

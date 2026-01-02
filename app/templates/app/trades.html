@@ -1,0 +1,148 @@
+{% extends "app/_layout.html" %}
+{% block app_content %}
+  <form method="get" class="rounded-xl border border-slate-800 bg-slate-900/20 p-4">
+    <div class="grid gap-3 md:grid-cols-6">
+      <div class="md:col-span-1">
+        <label class="text-xs text-slate-400">Ticker</label>
+        <input
+          class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+          type="text"
+          name="ticker"
+          value="{{ filters.ticker }}"
+          placeholder="AAPL"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Person</label>
+        <input
+          class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+          type="text"
+          name="person"
+          value="{{ filters.person }}"
+          placeholder="Name contains…"
+        />
+      </div>
+      <div class="md:col-span-1">
+        <label class="text-xs text-slate-400">Type</label>
+        <input
+          class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+          type="text"
+          name="type"
+          value="{{ filters.type }}"
+          placeholder="BUY/SELL"
+        />
+      </div>
+      <div class="md:col-span-1">
+        <label class="text-xs text-slate-400">From</label>
+        <input
+          class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+          type="date"
+          name="from"
+          value="{{ filters.from }}"
+        />
+      </div>
+      <div class="md:col-span-1">
+        <label class="text-xs text-slate-400">To</label>
+        <input
+          class="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+          type="date"
+          name="to"
+          value="{{ filters.to }}"
+        />
+      </div>
+    </div>
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+      <button
+        class="rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
+        type="submit"
+      >
+        Filter
+      </button>
+      <a class="text-sm text-slate-300 hover:text-white" href="{{ reset_url }}">Reset</a>
+      <a class="text-sm text-slate-300 hover:text-white" href="{{ export_url }}">
+        Export CSV
+      </a>
+      <div class="text-xs text-slate-500">
+        {% if total > 0 %}
+          Showing {{ showing_start }}–{{ showing_end }} of {{ total }}
+        {% else %}
+          No results
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  <div class="mt-6 overflow-hidden rounded-xl border border-slate-800">
+    <div class="overflow-x-auto bg-slate-950">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-900/30 text-xs uppercase tracking-wide text-slate-400">
+          <tr>
+            <th class="px-4 py-3">Date</th>
+            <th class="px-4 py-3">Ticker</th>
+            <th class="px-4 py-3">Person</th>
+            <th class="px-4 py-3">Type</th>
+            <th class="px-4 py-3">Amount</th>
+            <th class="px-4 py-3">Filed</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-900/60">
+          {% for t in trades %}
+            <tr class="hover:bg-slate-900/20">
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {{ t.transaction_date or "—" }}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap font-medium">
+                {% if t.ticker %}
+                  <a class="hover:underline" href="/app/companies/{{ t.ticker }}">{{ t.ticker }}</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {% if t.person_slug %}
+                  <a class="hover:underline" href="/app/people/{{ t.person_slug }}">{{ t.person_name or t.person_slug }}</a>
+                {% else %}
+                  {{ t.person_name or "—" }}
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {{ t.transaction_type or "—" }}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {% if t.amount_usd_low or t.amount_usd_high %}
+                  ${{ t.amount_usd_low or "?" }} – ${{ t.amount_usd_high or "?" }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-400">
+                {{ t.filed_at or "—" }}
+              </td>
+            </tr>
+          {% endfor %}
+          {% if trades|length == 0 %}
+            <tr>
+              <td class="px-4 py-8 text-sm text-slate-400" colspan="6">No trades found.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mt-4 flex items-center justify-between">
+    {% if prev_url %}
+      <a class="text-sm text-slate-300 hover:text-white" href="{{ prev_url }}">← Prev</a>
+    {% else %}
+      <span class="text-sm text-slate-600">← Prev</span>
+    {% endif %}
+
+    <div class="text-xs text-slate-500">Page {{ page }} / {{ total_pages }}</div>
+
+    {% if next_url %}
+      <a class="text-sm text-slate-300 hover:text-white" href="{{ next_url }}">Next →</a>
+    {% else %}
+      <span class="text-sm text-slate-600">Next →</span>
+    {% endif %}
+  </div>
+{% endblock %}

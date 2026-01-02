@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+  {% set path = request.url.path %}
+  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ page_title }}</h1>
+      {% if page_subtitle %}
+        <p class="mt-1 text-sm text-slate-400">{{ page_subtitle }}</p>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap gap-2 text-sm">
+      <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path == '/app' else 'text-slate-300 hover:text-white' }}"
+        href="/app"
+      >
+        Dashboard
+      </a>
+      <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/search') else 'text-slate-300 hover:text-white' }}"
+        href="/app/search"
+      >
+        Search
+      </a>
+      <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/insiders') else 'text-slate-300 hover:text-white' }}"
+        href="/app/insiders"
+      >
+        Insiders
+      </a>
+      <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/congress') else 'text-slate-300 hover:text-white' }}"
+        href="/app/congress"
+      >
+        Congress
+      </a>
+      <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/watchlist') else 'text-slate-300 hover:text-white' }}"
+        href="/app/watchlist"
+      >
+        Watchlist
+      </a>
+      <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/settings') else 'text-slate-300 hover:text-white' }}"
+        href="/app/settings"
+      >
+        Settings
+      </a>
+    </div>
+  </div>
+  <div class="mt-8">
+    {% block app_content %}{% endblock %}
+  </div>
+{% endblock %}

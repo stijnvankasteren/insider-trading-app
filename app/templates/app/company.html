@@ -1,0 +1,104 @@
+{% extends "app/_layout.html" %}
+{% block app_content %}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="text-sm text-slate-400">
+      {{ company_name or "" }}
+    </div>
+    <div class="flex items-center gap-2">
+      {% if watchlisted %}
+        <form method="post" action="/app/watchlist/remove">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="item_id" value="{{ watchlisted.id }}" />
+          <input type="hidden" name="next" value="/app/companies/{{ ticker }}" />
+          <button
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+            type="submit"
+          >
+            Remove from watchlist
+          </button>
+        </form>
+      {% else %}
+        <form method="post" action="/app/watchlist/add">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="kind" value="ticker" />
+          <input type="hidden" name="value" value="{{ ticker }}" />
+          <input type="hidden" name="label" value="{{ company_name or '' }}" />
+          <input type="hidden" name="next" value="/app/companies/{{ ticker }}" />
+          <button
+            class="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-200"
+            type="submit"
+          >
+            Add to watchlist
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-4 md:grid-cols-3">
+    <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <div class="text-xs text-slate-400">Total trades</div>
+      <div class="mt-1 text-2xl font-semibold">{{ total }}</div>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <div class="text-xs text-slate-400">Insider</div>
+      <div class="mt-1 text-2xl font-semibold">{{ by_source.get("insider", 0) }}</div>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <div class="text-xs text-slate-400">Congress</div>
+      <div class="mt-1 text-2xl font-semibold">{{ by_source.get("congress", 0) }}</div>
+    </div>
+  </div>
+
+  <div class="mt-8 overflow-hidden rounded-xl border border-slate-800">
+    <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+      Recent trades
+    </div>
+    <div class="overflow-x-auto bg-slate-950">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-900/30 text-xs uppercase tracking-wide text-slate-400">
+          <tr>
+            <th class="px-4 py-3">Date</th>
+            <th class="px-4 py-3">Source</th>
+            <th class="px-4 py-3">Person</th>
+            <th class="px-4 py-3">Type</th>
+            <th class="px-4 py-3">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-900/60">
+          {% for t in trades %}
+            <tr class="hover:bg-slate-900/20">
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {{ t.transaction_date or "—" }}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ t.source }}</td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {% if t.person_slug %}
+                  <a class="hover:underline" href="/app/people/{{ t.person_slug }}">{{ t.person_name or t.person_slug }}</a>
+                {% else %}
+                  {{ t.person_name or "—" }}
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ t.transaction_type or "—" }}</td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {% if t.amount_usd_low or t.amount_usd_high %}
+                  ${{ t.amount_usd_low or "?" }} – ${{ t.amount_usd_high or "?" }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          {% if trades|length == 0 %}
+            <tr>
+              <td class="px-4 py-8 text-sm text-slate-400" colspan="5">
+                No trades yet for {{ ticker }}.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
+

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="grid gap-10 md:grid-cols-2 md:items-center">
+    <div class="space-y-6">
+      <h1 class="text-4xl font-semibold leading-tight tracking-tight">
+        Alternative market data, made usable.
+      </h1>
+      <p class="text-slate-300">
+        Track insider trades, congress trades, filings, and other signals in one fast dashboard.
+      </p>
+      <div class="flex gap-3">
+        <a
+          class="rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
+          href="/app"
+        >
+          Open the app
+        </a>
+        <a
+          class="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:border-slate-500"
+          href="/app/insiders"
+        >
+          Explore data
+        </a>
+      </div>
+      <div class="grid grid-cols-3 gap-3 pt-2">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+          <div class="text-xs text-slate-400">Sources</div>
+          <div class="text-lg font-semibold">2+</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+          <div class="text-xs text-slate-400">Latency</div>
+          <div class="text-lg font-semibold">Minutes</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+          <div class="text-xs text-slate-400">Exports</div>
+          <div class="text-lg font-semibold">CSV</div>
+        </div>
+      </div>
+    </div>
+    <div class="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/40 to-slate-950 p-6">
+      <div class="text-sm text-slate-400">Preview</div>
+      <div class="mt-4 space-y-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div class="text-xs text-slate-400">Latest Insider Trade</div>
+          <div class="mt-2 text-sm">
+            <span class="font-medium">AAPL</span> — Buy — $50k–$100k
+          </div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div class="text-xs text-slate-400">Latest Congress Trade</div>
+          <div class="mt-2 text-sm">
+            <span class="font-medium">MSFT</span> — Sell — $15k–$50k
+          </div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div class="text-xs text-slate-400">Watchlist</div>
+          <div class="mt-2 text-sm text-slate-300">Coming next</div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+

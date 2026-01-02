@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="space-y-8">
+    <div>
+      <h1 class="text-3xl font-semibold tracking-tight">Pricing</h1>
+      <p class="mt-2 text-slate-300">Simple plans for a QuiverQuant-like alternative data dashboard.</p>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+        <div class="text-sm text-slate-400">Starter</div>
+        <div class="mt-2 text-3xl font-semibold">$0</div>
+        <div class="mt-1 text-sm text-slate-400">Mock data / personal use</div>
+        <ul class="mt-4 space-y-2 text-sm text-slate-300">
+          <li>✓ Landing + app UI</li>
+          <li>✓ CSV export</li>
+          <li>✓ n8n ingest endpoint</li>
+        </ul>
+      </div>
+
+      <div class="rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900/60 to-slate-950 p-6">
+        <div class="text-sm text-slate-300">Pro</div>
+        <div class="mt-2 text-3xl font-semibold">$49</div>
+        <div class="mt-1 text-sm text-slate-400">For teams and real data</div>
+        <ul class="mt-4 space-y-2 text-sm text-slate-300">
+          <li>✓ Postgres backend</li>
+          <li>✓ Insider + congress tables</li>
+          <li>✓ Search + detail pages</li>
+        </ul>
+        <a
+          class="mt-6 inline-flex rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
+          href="/app"
+        >
+          Open the app
+        </a>
+      </div>
+
+      <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+        <div class="text-sm text-slate-400">Enterprise</div>
+        <div class="mt-2 text-3xl font-semibold">Custom</div>
+        <div class="mt-1 text-sm text-slate-400">SLA, advanced sources</div>
+        <ul class="mt-4 space-y-2 text-sm text-slate-300">
+          <li>✓ Custom ingestion pipelines</li>
+          <li>✓ Dedicated hosting</li>
+          <li>✓ Advanced access controls</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+      <div class="text-sm font-medium">Note</div>
+      <p class="mt-2 text-sm text-slate-300">
+        This project is a QuiverQuant-like build with original branding and UI — not affiliated with QuiverQuant.
+      </p>
+    </div>
+  </section>
+{% endblock %}
+
