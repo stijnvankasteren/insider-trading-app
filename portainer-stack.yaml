@@ -17,6 +17,8 @@ services:
   alldata-web:
     # Use a registry image (recommended). Example:
     # APP_IMAGE=ghcr.io/<github-user-or-org>/<repo>
+    # If you built `alldata-web:latest` locally on the server, disable Portainer's "Pull images"
+    # for the stack, otherwise Portainer will try to pull `alldata-web` from Docker Hub and fail.
     image: ${APP_IMAGE:-alldata-web}:${APP_IMAGE_TAG:-latest}
     environment:
       APP_NAME: ${APP_NAME:-AltData}

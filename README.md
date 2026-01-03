@@ -104,7 +104,9 @@ docker build -t alldata-web:latest .
 - `AUTH_DISABLED=false` + `APP_PASSWORD` + `SESSION_SECRET` (voor login)
 - `PUBLIC_BASE_URL` (bijv. `https://jouwdomein.nl`)
 
-4) Deploy. Open `http://SERVER_IP:8000` (of via je reverse proxy).
+4) Deploy (zet **Pull images** uit als je de lokale image `alldata-web:latest` gebruikt; anders probeert Portainer te pullen van Docker Hub en faalt dit).
+
+Open `http://SERVER_IP:8000` (of via je reverse proxy).
 
 Tip: je hoeft Postgres niet te exposen naar buiten; laat `alldata-db` zonder `ports` (in `portainer-stack.yaml` zit dat al zo).
 
