@@ -96,7 +96,7 @@ Then open `http://localhost:8000` and set a strong `INGEST_SECRET` (via `.env` o
 docker build -t alldata-web:latest .
 ```
 
-2) Portainer → **Stacks** → **Add stack** → plak `portainer-stack.yaml` in de editor.
+2) Portainer → **Stacks** → **Add stack** → plak `portainer-stack-image.yaml` in de editor.
 
 3) Zet stack variables (minimaal):
 - `POSTGRES_PASSWORD` (sterk)
@@ -104,28 +104,26 @@ docker build -t alldata-web:latest .
 - `AUTH_DISABLED=false` + `APP_PASSWORD` + `SESSION_SECRET` (voor login)
 - `PUBLIC_BASE_URL` (bijv. `https://jouwdomein.nl`)
 
-4) Deploy (zet **Pull images** uit als je de lokale image `alldata-web:latest` gebruikt; anders probeert Portainer te pullen van Docker Hub en faalt dit).
+4) Deploy (zet **Pull images** uit als je de lokale image `alldata-web:latest` gebruikt; anders probeert Portainer te pullen van een registry).
 
 Open `http://SERVER_IP:8000` (of via je reverse proxy).
 
-Tip: je hoeft Postgres niet te exposen naar buiten; laat `alldata-db` zonder `ports` (in `portainer-stack.yaml` zit dat al zo).
+Tip: je hoeft Postgres niet te exposen naar buiten; laat `alldata-db` zonder `ports` (in `portainer-stack-image.yaml` zit dat al zo).
 
 ### GitHub + Portainer (aanrader)
 
-Doel: GitHub bouwt en publiceert automatisch een Docker image naar GHCR, en Portainer draait de stack met Postgres.
+Doel: Portainer deployt vanuit deze GitHub repo (Portainer pulled de repo en build de app image op de server) en draait de stack met Postgres.
 
 1) Push deze repo naar GitHub (branch `main`).
-2) Zet GHCR packages aan voor de repo. De workflow staat klaar: `.github/workflows/publish-image.yml`.
-   - Elke push naar `main` pusht `ghcr.io/<owner>/<repo>:latest` + een `:sha-...` tag.
-3) Portainer → **Registries** → **Add registry** → GitHub Container Registry (`ghcr.io`).
-   - Als je image privé is: maak een GitHub PAT met `read:packages` en gebruik die hier.
-4) Portainer → **Stacks** → **Add stack** → **Git repository**:
-   - Repository URL: je GitHub repo
+2) Portainer → **Stacks** → **Add stack** → **Git repository**:
+   - Repository URL: `https://github.com/stijnvankasteren/insider-trading-app`
+   - Reference: `main`
    - Compose path: `portainer-stack.yaml`
    - Environment variables:
-     - `APP_IMAGE=ghcr.io/<owner>/<repo>`
-     - `APP_IMAGE_TAG=latest`
      - `POSTGRES_PASSWORD=...`
      - `INGEST_SECRET=...`
      - (aanrader) `AUTH_DISABLED=false`, `APP_PASSWORD=...`, `SESSION_SECRET=...`, `COOKIE_SECURE=true`, `PUBLIC_BASE_URL=https://...`
-5) Deploy. Na nieuwe push: redeploy de stack (of zet auto-update aan als je Portainer dat ondersteunt).
+3) Deploy (zet **Pull images** uit; `alldata-web` wordt built, niet gepulled).
+4) Update na een push: Portainer stack → **Update the stack** → **Pull latest changes** + redeploy (of webhook/auto-update).
+
+Optioneel (prebuilt image i.p.v. build op de server): gebruik GHCR via `.github/workflows/publish-image.yml` en pull de image `ghcr.io/stijnvankasteren/insider-trading-app:latest` met registry credentials in Portainer.

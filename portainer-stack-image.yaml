@@ -15,13 +15,10 @@ services:
         condition: on-failure
 
   alldata-web:
-    # Deploy "from GitHub" = Portainer clones this repo and builds the image from the Dockerfile.
-    # Use Portainer's Stack → "Git repository" and set Compose path to `portainer-stack.yaml`.
-    # Note: if you enable Portainer's "Pull images" for the stack, it may fail because this
-    # service is built (not pulled) — turn "Pull images" off if you see pull errors.
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Image-based variant for Portainer "Web editor" stacks.
+    # - Local image: build on the server (e.g. `docker build -t alldata-web:latest .`) and disable "Pull images".
+    # - Registry image: set APP_IMAGE/APP_IMAGE_TAG (e.g. ghcr.io/stijnvankasteren/insider-trading-app:latest) and enable "Pull images".
+    image: ${APP_IMAGE:-alldata-web}:${APP_IMAGE_TAG:-latest}
     environment:
       APP_NAME: ${APP_NAME:-AltData}
       DATABASE_URL: postgresql+psycopg://alldata:${POSTGRES_PASSWORD}@alldata-db:5432/alldata
