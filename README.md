@@ -86,7 +86,7 @@ Recommended:
 docker compose up --build
 ```
 
-Then open `http://localhost:8000` and set a strong `INGEST_SECRET` in `compose.yaml`.
+Then open `http://localhost:8000` and set a strong `INGEST_SECRET` (via `.env` or Portainer stack variables).
 
 ### Portainer (stack + Postgres in dezelfde stack)
 

@@ -1,27 +1,29 @@
 services:
   db:
-    image: postgres:16
+    image: ${DB_IMAGE:-postgres:16}
     environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: alldata
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-change-me}"
+      POSTGRES_DB: "${POSTGRES_DB:-alldata}"
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${DB_PORT_MAPPING:-5432:5432}"
 
   web:
-    build: .
+    build: ${WEB_BUILD_CONTEXT:-.}
+    image: ${APP_IMAGE:-alldata-web}:${APP_IMAGE_TAG:-latest}
     environment:
-      APP_NAME: AltData
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/alldata
-      INGEST_SECRET: change-me
-      PUBLIC_BASE_URL: http://localhost:8000
-      AUTH_DISABLED: "true"
-      APP_PASSWORD: "change-me"
-      SESSION_SECRET: "change-me-to-a-long-random-string"
-      COOKIE_SECURE: "false"
+      APP_NAME: "${APP_NAME:-AltData}"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change-me}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-alldata}"
+      INGEST_SECRET: "${INGEST_SECRET:-change-me}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8000}"
+      AUTH_DISABLED: "${AUTH_DISABLED:-true}"
+      APP_PASSWORD: "${APP_PASSWORD:-change-me}"
+      SESSION_SECRET: "${SESSION_SECRET:-change-me-to-a-long-random-string}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     ports:
-      - "8000:8000"
+      - "${WEB_PORT_MAPPING:-8000:8000}"
     depends_on:
       - db
 
