@@ -88,6 +88,20 @@ docker compose up --build
 
 Then open `http://localhost:8000` and set a strong `INGEST_SECRET` (via `.env` or Portainer stack variables).
 
+Note: Postgres gebruikt `POSTGRES_USER`/`POSTGRES_PASSWORD` alleen bij de allereerste init van de data directory. Als je deze waarden aanpast nadat de `db_data` volume al bestaat, krijg je vaak `password authentication failed`. Fix: `docker compose down -v` (wist DB data) of wijzig het wachtwoord in Postgres en redeploy.
+
+Wachtwoord wijzigen in Postgres (zonder data te wissen):
+- Docker Compose (lokaal): `docker compose exec db psql -U postgres -d postgres -c "ALTER USER postgres WITH PASSWORD 'nieuw_wachtwoord';"`
+- Portainer: **Containers** → selecteer je Postgres container → **Console/Exec** → run `psql -U postgres -d postgres -c "ALTER USER postgres WITH PASSWORD 'nieuw_wachtwoord';"`, update daarna de stack env `POSTGRES_PASSWORD` en redeploy/restart.
+  - Gebruik je een andere DB user (bijv. `alldata` in `portainer-stack.yaml`), vervang dan `postgres` in het `ALTER USER ...` commando.
+  - DB-user bepalen:
+    - In Compose/stack: kijk naar `POSTGRES_USER` bij de Postgres service.
+    - In de app: kijk naar de user in `DATABASE_URL` (het stuk vóór `:`). In `portainer-stack.yaml` is dat standaard `alldata`.
+    - In een draaiende container: `printenv POSTGRES_USER` (Docker Compose: `docker compose exec db printenv POSTGRES_USER`; Portainer: container → **Console/Exec** → `printenv POSTGRES_USER`).
+  - App (website) updaten naar het nieuwe wachtwoord:
+    - Docker Compose: zet `POSTGRES_PASSWORD=nieuw_wachtwoord` in `.env` en doe `docker compose up -d --force-recreate web` (of `docker compose up -d --build`).
+    - Portainer: Stack → **Environment variables** → update `POSTGRES_PASSWORD` → redeploy/restart.
+
 ### GitHub + Portainer (aanrader)
 
 Doel: Portainer deployt vanuit deze GitHub repo (Portainer pulled de repo en build de app image op de server) en draait de stack met Postgres.

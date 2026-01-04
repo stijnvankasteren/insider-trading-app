@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.market_data import MarketDataError, fetch_stooq_daily_prices
 from app.models import Subscriber, Trade, User, WatchlistItem
 from app.settings import get_settings
 
@@ -790,6 +791,107 @@ def app_search(
             "people_results": people_results,
             "watchlist_tickers": watchlist_tickers,
             "watchlist_people": watchlist_people,
+        },
+    )
+
+
+@router.get("/app/prices", response_class=HTMLResponse)
+def app_prices(
+    request: Request,
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    range: str = "1m",
+):
+    raw_ticker = (ticker or "").strip()
+    selected_range = (range or "1m").strip().lower()
+
+    ranges: list[tuple[str, str, Optional[dt.timedelta]]] = [
+        ("1m", "1M", dt.timedelta(days=31)),
+        ("3m", "3M", dt.timedelta(days=93)),
+        ("1y", "1Y", dt.timedelta(days=366)),
+        ("5y", "5Y", dt.timedelta(days=5 * 366)),
+        ("max", "Max", None),
+    ]
+    valid_ranges = {code for code, _, _ in ranges}
+    if selected_range not in valid_ranges:
+        selected_range = "1m"
+
+    error: Optional[str] = None
+    chart_labels: list[str] = []
+    chart_values: list[float] = []
+    stats: dict[str, Any] = {}
+    resolved_symbol: Optional[str] = None
+
+    if raw_ticker:
+        try:
+            resolved_symbol, points = fetch_stooq_daily_prices(raw_ticker)
+
+            end_date = points[-1].date
+            start_date = points[0].date
+            for code, _, delta in ranges:
+                if code != selected_range:
+                    continue
+                if delta is not None:
+                    start_date = end_date - delta
+
+            filtered = [p for p in points if p.date >= start_date]
+            if not filtered:
+                filtered = points[-1:]
+
+            max_points = 900
+            if len(filtered) > max_points:
+                step = math.ceil(len(filtered) / max_points)
+                filtered = filtered[::step]
+                if filtered[-1].date != points[-1].date:
+                    filtered.append(points[-1])
+
+            chart_labels = [p.date.isoformat() for p in filtered]
+            chart_values = [round(p.close, 6) for p in filtered]
+
+            first = filtered[0].close
+            last = filtered[-1].close
+            change_abs = last - first
+            change_pct = (change_abs / first) * 100 if first else 0.0
+
+            stats = {
+                "first_date": filtered[0].date.isoformat(),
+                "last_date": filtered[-1].date.isoformat(),
+                "first_close": f"{first:,.2f}",
+                "last_close": f"{last:,.2f}",
+                "change_abs": f"{change_abs:+,.2f}",
+                "change_pct": f"{change_pct:+.2f}%",
+                "change_positive": change_abs >= 0,
+            }
+        except MarketDataError as exc:
+            error = str(exc)
+
+    range_links = [
+        {
+            "code": code,
+            "label": label,
+            "selected": code == selected_range,
+            "url": _build_url(
+                "/app/prices",
+                {"ticker": raw_ticker, "range": code},
+            ),
+        }
+        for code, label, _ in ranges
+    ]
+
+    return _render(
+        request,
+        "app/prices.html",
+        {
+            "page_title": "Prices",
+            "page_subtitle": "Search a stock and view price history.",
+            "ticker": raw_ticker.upper(),
+            "range": selected_range,
+            "range_links": range_links,
+            "resolved_symbol": resolved_symbol,
+            "chart_labels": chart_labels,
+            "chart_values": chart_values,
+            "stats": stats,
+            "error": error,
         },
     )
 

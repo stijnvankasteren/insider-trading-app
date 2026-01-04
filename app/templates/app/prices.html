@@ -1,0 +1,132 @@
+{% extends "app/_layout.html" %}
+{% block app_content %}
+  <form method="get" class="rounded-xl border border-slate-800 bg-slate-900/20 p-4">
+    <label class="text-xs text-slate-400">Ticker</label>
+    <div class="mt-1 flex gap-2">
+      <input
+        class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+        type="text"
+        name="ticker"
+        value="{{ ticker }}"
+        placeholder="AAPL"
+      />
+      <input type="hidden" name="range" value="{{ range }}" />
+      <button
+        class="rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
+        type="submit"
+      >
+        View
+      </button>
+    </div>
+    <p class="mt-2 text-xs text-slate-500">
+      Tip: for non‑US tickers you may need an exchange suffix (e.g. <span class="text-slate-300">7203.jp</span>).
+    </p>
+  </form>
+
+  {% if ticker %}
+    <div class="mt-4 flex flex-wrap gap-2 text-xs">
+      {% for item in range_links %}
+        <a
+          class="rounded-md border px-3 py-1.5 {{ 'border-white bg-white text-slate-900' if item.selected else 'border-slate-800 text-slate-300 hover:border-slate-600 hover:text-white' }}"
+          href="{{ item.url }}"
+        >
+          {{ item.label }}
+        </a>
+      {% endfor %}
+    </div>
+
+    {% if error %}
+      <div class="mt-5 rounded-xl border border-rose-900/50 bg-rose-900/10 px-4 py-3 text-sm text-rose-100">
+        {{ error }}
+      </div>
+    {% elif chart_labels|length == 0 %}
+      <div class="mt-6 text-sm text-slate-400">No price data found.</div>
+    {% else %}
+      <div class="mt-6 rounded-xl border border-slate-800 bg-slate-950 p-4">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div class="text-lg font-semibold tracking-tight">{{ ticker }}</div>
+            <div class="mt-1 text-xs text-slate-500">
+              {% if resolved_symbol %}
+                Source symbol: <span class="text-slate-300">{{ resolved_symbol }}</span> ·
+              {% endif %}
+              {{ stats.first_date }} → {{ stats.last_date }}
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-semibold">{{ stats.last_close }}</div>
+            <div class="text-xs {{ 'text-emerald-300' if stats.change_positive else 'text-rose-300' }}">
+              {{ stats.change_abs }} ({{ stats.change_pct }})
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <canvas id="priceChart" height="110"></canvas>
+        </div>
+
+        <div class="mt-3 text-xs text-slate-500">
+          Daily closes via Stooq. For informational purposes only.
+        </div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script>
+        const labels = {{ chart_labels | tojson }};
+        const values = {{ chart_values | tojson }};
+
+        const ctx = document.getElementById("priceChart");
+        const data = {
+          labels,
+          datasets: [
+            {
+              label: "{{ ticker }}",
+              data: values,
+              borderColor: "rgba(255, 255, 255, 0.9)",
+              backgroundColor: "rgba(255, 255, 255, 0.08)",
+              fill: true,
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0.25,
+            },
+          ],
+        };
+
+        new Chart(ctx, {
+          type: "line",
+          data,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                mode: "index",
+                intersect: false,
+              },
+            },
+            interaction: {
+              mode: "index",
+              intersect: false,
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(148, 163, 184, 0.08)" },
+                ticks: { maxTicksLimit: 8, color: "rgba(148, 163, 184, 0.8)" },
+              },
+              y: {
+                grid: { color: "rgba(148, 163, 184, 0.08)" },
+                ticks: { color: "rgba(148, 163, 184, 0.8)" },
+              },
+            },
+          },
+        });
+      </script>
+    {% endif %}
+  {% else %}
+    <div class="mt-6 text-sm text-slate-400">
+      Enter a ticker to view price history.
+    </div>
+  {% endif %}
+{% endblock %}
+
