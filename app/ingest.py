@@ -204,6 +204,20 @@ def ingest_trades(
             form_value = tx_type_value
             tx_type_value = None
 
+        amount_usd_low = _parse_int(raw.get("amount_usd_low") or raw.get("amountUsdLow"))
+        amount_usd_high = _parse_int(
+            raw.get("amount_usd_high") or raw.get("amountUsdHigh")
+        )
+        amount_usd = _parse_int(raw.get("amount_usd") or raw.get("amountUsd"))
+        if amount_usd_low is None and amount_usd_high is None and amount_usd is not None:
+            amount_usd_low = amount_usd
+            amount_usd_high = amount_usd
+        elif source == "insider":
+            if amount_usd_low is None and amount_usd_high is not None:
+                amount_usd_low = amount_usd_high
+            elif amount_usd_high is None and amount_usd_low is not None:
+                amount_usd_high = amount_usd_low
+
         payload: dict[str, Any] = {
             "source": source,
             "external_id": raw.get("external_id") or raw.get("externalId"),
@@ -216,12 +230,8 @@ def ingest_trades(
                 raw.get("transaction_date") or raw.get("transactionDate")
             ),
             "filed_at": _parse_datetime(raw.get("filed_at") or raw.get("filedAt")),
-            "amount_usd_low": _parse_int(
-                raw.get("amount_usd_low") or raw.get("amountUsdLow")
-            ),
-            "amount_usd_high": _parse_int(
-                raw.get("amount_usd_high") or raw.get("amountUsdHigh")
-            ),
+            "amount_usd_low": amount_usd_low,
+            "amount_usd_high": amount_usd_high,
             "shares": _parse_int(raw.get("shares")),
             "price_usd": _parse_decimal(raw.get("price_usd") or raw.get("priceUsd")),
             "url": raw.get("url"),
