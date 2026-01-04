@@ -8,8 +8,8 @@ from decimal import Decimal
 from typing import Any
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, status
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -282,3 +282,29 @@ def ingest_trades(
 
     db.commit()
     return {"inserted": inserted, "updated": updated, "errors": errors[:50]}
+
+
+@router.delete("/trades")
+def delete_trades(
+    confirm: bool = Query(default=False),
+    source: Optional[str] = Query(default=None),
+    _: None = Depends(_require_ingest_secret),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Add ?confirm=true to delete trades",
+        )
+
+    source_value: Optional[str] = None
+    stmt = delete(Trade)
+    if source is not None:
+        normalized = source.strip().lower()
+        if normalized:
+            source_value = normalized
+            stmt = stmt.where(Trade.source == normalized)
+
+    result = db.execute(stmt)
+    db.commit()
+    return {"deleted": int(result.rowcount or 0), "source": source_value}

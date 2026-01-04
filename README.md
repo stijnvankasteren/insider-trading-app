@@ -71,6 +71,21 @@ curl -sS -X POST "http://localhost:8000/api/ingest/trades" \
   -d '{"source":"insider","external_id":"demo:curl:1","ticker":"TSLA","person_name":"Test Person","transaction_type":"BUY","transaction_date":"2025-12-29","amount_usd_low":1000,"amount_usd_high":5000}'
 ```
 
+### Delete trades
+
+The app also exposes `DELETE /api/ingest/trades` protected by `INGEST_SECRET`.
+
+Safety: add `?confirm=true` or the request will be rejected.
+
+```bash
+curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?confirm=true" \
+  -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
+
+# Only delete a single source ("insider" / "congress" / etc)
+curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?source=insider&confirm=true" \
+  -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
+```
+
 The UI pages `/app/insiders`, `/app/congress`, `/app/search`, `/app/watchlist` will read from the database.
 
 ## Deploy (Linux server)
