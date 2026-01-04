@@ -11,8 +11,9 @@ services:
       - "${DB_PORT_MAPPING:-5432:5432}"
 
   web:
-    build: ${WEB_BUILD_CONTEXT:-.}
-    image: ${APP_IMAGE:-alldata-web}:${APP_IMAGE_TAG:-latest}
+    build:
+      context: ${WEB_BUILD_CONTEXT:-.}
+      dockerfile: Dockerfile
     environment:
       APP_NAME: "${APP_NAME:-AltData}"
       DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change-me}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-alldata}"
