@@ -35,7 +35,7 @@
     </div>
   </div>
 
-  <div class="mt-6 grid gap-4 md:grid-cols-3">
+  <div class="mt-6 grid gap-4 md:grid-cols-4">
     <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
       <div class="text-xs text-slate-400">Total trades</div>
       <div class="mt-1 text-2xl font-semibold">{{ total }}</div>
@@ -47,6 +47,22 @@
     <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
       <div class="text-xs text-slate-400">Congress</div>
       <div class="mt-1 text-2xl font-semibold">{{ by_source.get("congress", 0) }}</div>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <div class="flex items-center justify-between gap-3 text-xs text-slate-400">
+        <div>Price</div>
+        <a class="text-slate-400 hover:text-white" href="{{ prices_url }}">Chart</a>
+      </div>
+      <div class="mt-1 text-2xl font-semibold">
+        {% if latest_price %}
+          ${{ latest_price }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      {% if latest_price_date %}
+        <div class="mt-1 text-xs text-slate-500">Close {{ latest_price_date }}</div>
+      {% endif %}
     </div>
   </div>
 
@@ -63,6 +79,7 @@
             <th class="px-4 py-3">Person</th>
             <th class="px-4 py-3">Type</th>
             <th class="px-4 py-3">Form</th>
+            <th class="px-4 py-3">Price</th>
             <th class="px-4 py-3">Amount</th>
           </tr>
         </thead>
@@ -83,6 +100,13 @@
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ t.transaction_type or "—" }}</td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ t.form or "—" }}</td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+	                {% if t.price_usd is not none %}
+	                  ${{ "{:,.2f}".format(t.price_usd) }}
+	                {% else %}
+	                  —
+	                {% endif %}
+	              </td>
+	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
 	                {% if t.amount_usd_low is not none or t.amount_usd_high is not none %}
 	                  {% if t.source == "insider" %}
 	                    ${{ t.amount_usd_low if t.amount_usd_low is not none else (t.amount_usd_high if t.amount_usd_high is not none else "?") }}
@@ -97,7 +121,7 @@
           {% endfor %}
           {% if trades|length == 0 %}
             <tr>
-              <td class="px-4 py-8 text-sm text-slate-400" colspan="6">
+              <td class="px-4 py-8 text-sm text-slate-400" colspan="7">
                 No trades yet for {{ ticker }}.
               </td>
             </tr>

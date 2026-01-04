@@ -1109,6 +1109,17 @@ def app_company(
         .limit(100)
     ).all()
 
+    prices_url = _build_url("/app/prices", {"ticker": ticker_norm})
+    latest_price: Optional[str] = None
+    latest_price_date: Optional[str] = None
+    try:
+        _, points = fetch_stooq_daily_prices(ticker_norm)
+        latest_point = points[-1]
+        latest_price = f"{latest_point.close:,.2f}"
+        latest_price_date = latest_point.date.isoformat()
+    except MarketDataError:
+        pass
+
     watchlisted = db.scalar(
         select(WatchlistItem).where(
             WatchlistItem.user_id == user_id,
@@ -1128,6 +1139,9 @@ def app_company(
             "total": total,
             "by_source": {k: int(v) for k, v in by_source.items()},
             "trades": trades,
+            "prices_url": prices_url,
+            "latest_price": latest_price,
+            "latest_price_date": latest_price_date,
             "watchlisted": watchlisted,
         },
     )
