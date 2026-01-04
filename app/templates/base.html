@@ -4,13 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title or app_name }}</title>
+    <link rel="icon" href="/static/logo.svg" type="image/svg+xml" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/site.css" />
   </head>
   <body class="min-h-screen bg-slate-950 text-slate-100">
     <header class="border-b border-slate-800">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <a href="/" class="text-lg font-semibold tracking-tight">{{ app_name }}</a>
+        <a href="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight hover:opacity-90">
+          <img src="/static/logo.svg" alt="{{ app_name }} logo" class="h-7 w-7" />
+          <span>{{ app_name }}</span>
+        </a>
         <nav class="flex items-center gap-4 text-sm text-slate-300">
           <a class="hover:text-white" href="/pricing">Pricing</a>
           <a class="hover:text-white" href="/subscribe">Subscribe</a>
