@@ -16,6 +16,29 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _database_url() -> str:
+    raw = os.environ.get("DATABASE_URL")
+    if raw:
+        return raw
+
+    password = os.environ.get("POSTGRES_PASSWORD", "").strip()
+    if not password:
+        return "sqlite:///./data/dev.db"
+
+    from urllib.parse import quote
+
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    host = os.environ.get("POSTGRES_HOST", "db")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    database_name = os.environ.get("POSTGRES_DB", user)
+
+    user_enc = quote(user, safe="")
+    password_enc = quote(password, safe="")
+    database_enc = quote(database_name, safe="")
+
+    return f"postgresql+psycopg://{user_enc}:{password_enc}@{host}:{port}/{database_enc}"
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -32,7 +55,7 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         app_name=os.environ.get("APP_NAME", "AltData"),
-        database_url=os.environ.get("DATABASE_URL", "sqlite:///./data/dev.db"),
+        database_url=_database_url(),
         ingest_secret=os.environ.get("INGEST_SECRET", ""),
         public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000"),
         auth_disabled=_env_bool("AUTH_DISABLED", True),
