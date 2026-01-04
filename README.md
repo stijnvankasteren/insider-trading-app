@@ -115,5 +115,7 @@ Doel: Portainer deployt vanuit deze GitHub repo (Portainer pulled de repo en bui
      - `POSTGRES_PASSWORD=...`
      - `INGEST_SECRET=...`
      - (aanrader) `AUTH_DISABLED=false`, `APP_PASSWORD=...`, `SESSION_SECRET=...`, `COOKIE_SECURE=true`, `PUBLIC_BASE_URL=https://...`
+     - Tip: deze variabelen worden door Portainer per stack opgeslagen. Je hoeft ze maar **1x** in te vullen; bij **Update the stack** → **Pull latest changes** + redeploy blijven ze staan (tenzij je ze zelf verwijdert/overschrijft). Voor secrets: zet **Hide value** aan.
+       - Let op: als een env var op **Hide value** staat, toont Portainer de waarde later niet meer in de UI, maar hij wordt wel gebruikt.
 3) Deploy (zet **Pull images** uit; `alldata-web` wordt built, niet gepulled).
 4) Update na een push: Portainer stack → **Update the stack** → **Pull latest changes** + redeploy (of webhook/auto-update).
