@@ -126,15 +126,19 @@
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
                   {{ t.form or "—" }}
-                </td>
-                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
-                  {% if t.amount_usd_low or t.amount_usd_high %}
-                    ${{ t.amount_usd_low or "?" }} – ${{ t.amount_usd_high or "?" }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-              </tr>
+	                </td>
+	                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+	                  {% if t.amount_usd_low is not none or t.amount_usd_high is not none %}
+	                    {% if t.source == "insider" %}
+	                      ${{ t.amount_usd_low if t.amount_usd_low is not none else (t.amount_usd_high if t.amount_usd_high is not none else "?") }}
+	                    {% else %}
+	                      ${{ t.amount_usd_low if t.amount_usd_low is not none else "?" }} – ${{ t.amount_usd_high if t.amount_usd_high is not none else "?" }}
+	                    {% endif %}
+	                  {% else %}
+	                    —
+	                  {% endif %}
+	                </td>
+	              </tr>
             {% endfor %}
           </tbody>
         </table>
