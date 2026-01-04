@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.market_data import MarketDataError, fetch_stooq_daily_prices
+from app.market_data import MarketDataError, PricePoint, fetch_stooq_daily_prices
 from app.models import Subscriber, Trade, User, WatchlistItem
 from app.settings import get_settings
 
@@ -47,6 +47,48 @@ def _build_url(path: str, params: dict[str, Any]) -> str:
     if not clean:
         return path
     return f"{path}?{urlencode(clean)}"
+
+
+def _attach_trade_price_changes(trades: list[Trade]) -> None:
+    tickers = sorted({t.ticker for t in trades if t.ticker})
+    series_by_ticker: dict[str, list[PricePoint]] = {}
+    for ticker in tickers:
+        try:
+            _, points = fetch_stooq_daily_prices(ticker)
+        except MarketDataError:
+            continue
+        series_by_ticker[ticker] = points
+
+    for trade in trades:
+        pct_text: Optional[str] = None
+        pct_positive = True
+
+        ticker = trade.ticker
+        tx_date = trade.transaction_date or (trade.filed_at.date() if trade.filed_at else None)
+        if ticker:
+            points = series_by_ticker.get(ticker)
+            if points:
+                latest_close = points[-1].close
+                baseline: Optional[float] = None
+                if trade.price_usd is not None:
+                    try:
+                        baseline = float(trade.price_usd)
+                    except (TypeError, ValueError):
+                        baseline = None
+
+                if baseline is None and tx_date is not None:
+                    for p in reversed(points):
+                        if p.date <= tx_date:
+                            baseline = p.close
+                            break
+
+                if baseline and baseline > 0:
+                    pct = ((latest_close - baseline) / baseline) * 100
+                    pct_text = f"{pct:+.1f}%"
+                    pct_positive = pct >= 0
+
+        setattr(trade, "price_change_pct", pct_text)
+        setattr(trade, "price_change_positive", pct_positive)
 
 
 def _base_context(request: Request) -> dict[str, Any]:
@@ -558,6 +600,8 @@ def app_insiders(
         .offset(offset)
     ).all()
 
+    _attach_trade_price_changes(trades)
+
     filters = {
         "ticker": ticker or "",
         "person": person or "",
@@ -663,6 +707,8 @@ def app_congress(
         .limit(page_size)
         .offset(offset)
     ).all()
+
+    _attach_trade_price_changes(trades)
 
     filters = {
         "ticker": ticker or "",

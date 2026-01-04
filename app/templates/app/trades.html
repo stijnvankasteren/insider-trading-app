@@ -83,6 +83,7 @@
             <th class="px-4 py-3">Type</th>
             <th class="px-4 py-3">Form</th>
             <th class="px-4 py-3">Amount</th>
+            <th class="px-4 py-3">Δ%</th>
             <th class="px-4 py-3">Filed</th>
           </tr>
         </thead>
@@ -123,6 +124,15 @@
 	                  —
 	                {% endif %}
 	              </td>
+	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+	                {% if t.price_change_pct %}
+	                  <span class="text-xs {{ 'text-emerald-300' if t.price_change_positive else 'text-rose-300' }}">
+	                    {{ t.price_change_pct }}
+	                  </span>
+	                {% else %}
+	                  —
+	                {% endif %}
+	              </td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-400">
                 {{ t.filed_at or "—" }}
               </td>
@@ -130,7 +140,7 @@
           {% endfor %}
           {% if trades|length == 0 %}
             <tr>
-              <td class="px-4 py-8 text-sm text-slate-400" colspan="7">No trades found.</td>
+              <td class="px-4 py-8 text-sm text-slate-400" colspan="8">No trades found.</td>
             </tr>
           {% endif %}
         </tbody>
