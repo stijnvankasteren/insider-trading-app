@@ -4,7 +4,7 @@ import datetime as dt
 import hashlib
 import json
 import re
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from typing import Optional
 
@@ -204,19 +204,37 @@ def ingest_trades(
             form_value = tx_type_value
             tx_type_value = None
 
+        shares_value = _parse_int(raw.get("shares"))
+        price_usd_value = _parse_decimal(raw.get("price_usd") or raw.get("priceUsd"))
+
         amount_usd_low = _parse_int(raw.get("amount_usd_low") or raw.get("amountUsdLow"))
-        amount_usd_high = _parse_int(
-            raw.get("amount_usd_high") or raw.get("amountUsdHigh")
-        )
+        amount_usd_high = _parse_int(raw.get("amount_usd_high") or raw.get("amountUsdHigh"))
         amount_usd = _parse_int(raw.get("amount_usd") or raw.get("amountUsd"))
-        if amount_usd_low is None and amount_usd_high is None and amount_usd is not None:
-            amount_usd_low = amount_usd
-            amount_usd_high = amount_usd
-        elif source == "insider":
-            if amount_usd_low is None and amount_usd_high is not None:
-                amount_usd_low = amount_usd_high
-            elif amount_usd_high is None and amount_usd_low is not None:
-                amount_usd_high = amount_usd_low
+
+        if source == "insider" and shares_value is not None and price_usd_value is not None:
+            computed_amount = (price_usd_value * Decimal(shares_value)).to_integral_value(
+                rounding=ROUND_HALF_UP
+            )
+            amount_usd_low = int(computed_amount)
+            amount_usd_high = int(computed_amount)
+        else:
+            if amount_usd_low is None and amount_usd_high is None and amount_usd is not None:
+                amount_usd_low = amount_usd
+                amount_usd_high = amount_usd
+            if source == "insider":
+                if amount_usd_low is None and amount_usd_high is not None:
+                    amount_usd_low = amount_usd_high
+                elif amount_usd_high is None and amount_usd_low is not None:
+                    amount_usd_high = amount_usd_low
+            elif source == "congress":
+                if amount_usd_low is None or amount_usd_high is None:
+                    errors.append(
+                        {
+                            "index": idx,
+                            "error": "For source=congress, provide amount_usd_low and amount_usd_high",
+                        }
+                    )
+                    continue
 
         payload: dict[str, Any] = {
             "source": source,
@@ -232,8 +250,8 @@ def ingest_trades(
             "filed_at": _parse_datetime(raw.get("filed_at") or raw.get("filedAt")),
             "amount_usd_low": amount_usd_low,
             "amount_usd_high": amount_usd_high,
-            "shares": _parse_int(raw.get("shares")),
-            "price_usd": _parse_decimal(raw.get("price_usd") or raw.get("priceUsd")),
+            "shares": shares_value,
+            "price_usd": price_usd_value,
             "url": raw.get("url"),
             "raw": raw,
         }

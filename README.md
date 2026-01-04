@@ -48,7 +48,6 @@ Example payload (single object or an array of objects):
   "transaction_type": "BUY",
   "transaction_date": "2025-12-29",
   "filed_at": "2025-12-29T12:34:56+00:00",
-  "amount_usd": 75000,
   "shares": 250,
   "price_usd": 189.12,
   "url": "https://example.com/detail"
@@ -70,7 +69,7 @@ Body:
   - `transaction_type` (or `type`), `form` (or `issuerForm` / `reportingForm`)
   - `transaction_date` (or `transactionDate`, `YYYY-MM-DD`), `filed_at` (or `filedAt`, ISO datetime)
   - Amount (USD):
-    - Single value (e.g. insider trades): `amount_usd` (or `amountUsd`)
+    - Insider trades (`source=insider`): calculated as `shares * price_usd` (overrides any amount fields)
     - Range (e.g. congress trades): `amount_usd_low` (or `amountUsdLow`) + `amount_usd_high` (or `amountUsdHigh`)
   - `shares`, `price_usd` (or `priceUsd`)
   - `url`
@@ -88,7 +87,7 @@ Quick test (local):
 curl -sS -X POST "http://localhost:8000/api/ingest/trades" \
   -H "content-type: application/json" \
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')" \
-  -d '{"source":"insider","external_id":"demo:curl:1","ticker":"TSLA","person_name":"Test Person","transaction_type":"BUY","transaction_date":"2025-12-29","amount_usd":2500}'
+  -d '{"source":"insider","external_id":"demo:curl:1","ticker":"TSLA","person_name":"Test Person","transaction_type":"BUY","transaction_date":"2025-12-29","shares":10,"price_usd":250}'
 ```
 
 ### Delete trades
