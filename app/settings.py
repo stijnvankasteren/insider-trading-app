@@ -16,6 +16,17 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _env_int(name: str, default: int, *, min_value: int = 0, max_value: int = 1_000_000) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return default
+    return max(min_value, min(max_value, value))
+
+
 def _database_url() -> str:
     raw = os.environ.get("DATABASE_URL")
     if raw:
@@ -39,27 +50,91 @@ def _database_url() -> str:
     return f"postgresql+psycopg://{user_enc}:{password_enc}@{host}:{port}/{database_enc}"
 
 
+def _env_csv(name: str) -> list[str]:
+    raw = os.environ.get(name)
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
     database_url: str
     ingest_secret: str
+    ingest_secrets: tuple[str, ...]
     public_base_url: str
     auth_disabled: bool
     app_password: str
     session_secret: str
     cookie_secure: bool
+    trust_proxy_headers: bool
+    rate_limit_enabled: bool
+    rate_limit_window_seconds: int
+    rate_limit_default_ip: int
+    rate_limit_default_principal: int
+    rate_limit_auth_ip: int
+    rate_limit_auth_principal: int
+    rate_limit_ingest_ip: int
+    rate_limit_ingest_principal: int
+    rate_limit_health_ip: int
+    rate_limit_health_principal: int
+    ingest_reject_extra_fields: bool
+    ingest_max_items: int
+    ingest_max_raw_bytes: int
 
 
 @lru_cache
 def get_settings() -> Settings:
+    ingest_secrets: list[str] = []
+    # Support key rotation: accept multiple secrets while keeping INGEST_SECRET as the primary.
+    ingest_secrets.extend(_env_csv("INGEST_SECRETS"))
+    primary_ingest_secret = os.environ.get("INGEST_SECRET", "").strip()
+    if primary_ingest_secret:
+        ingest_secrets.insert(0, primary_ingest_secret)
+    previous_ingest_secret = os.environ.get("INGEST_SECRET_PREVIOUS", "").strip()
+    if previous_ingest_secret:
+        ingest_secrets.append(previous_ingest_secret)
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    ingest_secrets = [s for s in ingest_secrets if not (s in seen or seen.add(s))]
+    ingest_secret = ingest_secrets[0] if ingest_secrets else ""
+
     return Settings(
         app_name=os.environ.get("APP_NAME", "AltData"),
         database_url=_database_url(),
-        ingest_secret=os.environ.get("INGEST_SECRET", ""),
+        ingest_secret=ingest_secret,
+        ingest_secrets=tuple(ingest_secrets),
         public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000"),
         auth_disabled=_env_bool("AUTH_DISABLED", True),
         app_password=os.environ.get("APP_PASSWORD", ""),
         session_secret=os.environ.get("SESSION_SECRET", ""),
         cookie_secure=_env_bool("COOKIE_SECURE", False),
+        trust_proxy_headers=_env_bool("TRUST_PROXY_HEADERS", False),
+        rate_limit_enabled=_env_bool("RATE_LIMIT_ENABLED", True),
+        rate_limit_window_seconds=_env_int("RATE_LIMIT_WINDOW_SECONDS", 60, min_value=1, max_value=3600),
+        rate_limit_default_ip=_env_int("RATE_LIMIT_DEFAULT_IP", 120, min_value=1, max_value=100_000),
+        rate_limit_default_principal=_env_int(
+            "RATE_LIMIT_DEFAULT_PRINCIPAL", 240, min_value=1, max_value=100_000
+        ),
+        # Stricter limits for login/signup/subscribe to slow credential stuffing / spam.
+        rate_limit_auth_ip=_env_int("RATE_LIMIT_AUTH_IP", 20, min_value=1, max_value=100_000),
+        rate_limit_auth_principal=_env_int(
+            "RATE_LIMIT_AUTH_PRINCIPAL", 40, min_value=1, max_value=100_000
+        ),
+        # Ingest endpoints are protected by a secret header but can be expensive; keep them bounded.
+        rate_limit_ingest_ip=_env_int("RATE_LIMIT_INGEST_IP", 60, min_value=1, max_value=100_000),
+        rate_limit_ingest_principal=_env_int(
+            "RATE_LIMIT_INGEST_PRINCIPAL", 120, min_value=1, max_value=100_000
+        ),
+        # Health is often polled by load balancers/monitors.
+        rate_limit_health_ip=_env_int("RATE_LIMIT_HEALTH_IP", 300, min_value=1, max_value=100_000),
+        rate_limit_health_principal=_env_int(
+            "RATE_LIMIT_HEALTH_PRINCIPAL", 600, min_value=1, max_value=100_000
+        ),
+        ingest_reject_extra_fields=_env_bool("INGEST_REJECT_EXTRA_FIELDS", False),
+        ingest_max_items=_env_int("INGEST_MAX_ITEMS", 5000, min_value=1, max_value=50_000),
+        ingest_max_raw_bytes=_env_int(
+            "INGEST_MAX_RAW_BYTES", 50_000, min_value=1_000, max_value=5_000_000
+        ),
     )

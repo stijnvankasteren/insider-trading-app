@@ -14,6 +14,7 @@ from app.db import get_db
 from app.forms import form_prefix, normalize_form
 from app.ingest import router as ingest_router
 from app.models import Trade
+from app.sanitization import sql_like_contains
 from app.settings import get_settings
 
 router = APIRouter()
@@ -42,33 +43,31 @@ def _require_api_login(request: Request) -> None:
         )
 
 
-def _parse_iso_date(value: Optional[str]) -> Optional[dt.date]:
-    if not value:
-        return None
-    try:
-        return dt.date.fromisoformat(value)
-    except ValueError:
-        return None
-
-
 @router.get("/trades")
 def list_trades(
+    request: Request,
     _: None = Depends(_require_api_login),
     db: Session = Depends(get_db),
-    form: Optional[str] = None,
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    limit: int = 50,
-    offset: int = 0,
+    form: Optional[str] = Query(default=None, max_length=32),
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
 ) -> dict[str, object]:
-    limit = max(1, min(int(limit or 50), 200))
-    offset = max(0, int(offset or 0))
-
-    date_from = _parse_iso_date(from_date)
-    date_to = _parse_iso_date(to_date)
+    allowed_params = {"form", "ticker", "person", "type", "from", "to", "limit", "offset"}
+    unexpected = sorted(set(request.query_params.keys()) - allowed_params)
+    if unexpected:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unexpected query parameter(s): {', '.join(unexpected)}",
+        )
 
     conditions = []
     if form:
@@ -79,9 +78,11 @@ def list_trades(
         elif normalized_form:
             conditions.append(func.lower(Trade.form) == normalized_form.lower())
     if ticker:
-        conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
+        pattern = sql_like_contains(ticker.strip().lower())
+        conditions.append(func.lower(Trade.ticker).like(pattern, escape="\\"))
     if person:
-        conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
+        pattern = sql_like_contains(person.strip().lower())
+        conditions.append(func.lower(Trade.person_name).like(pattern, escape="\\"))
     if tx_type:
         tx_value = tx_type.strip().lower()
         base = tx_value
@@ -100,10 +101,10 @@ def list_trades(
                 func.lower(Trade.form).in_(candidates),
             )
         )
-    if date_from:
-        conditions.append(Trade.transaction_date >= date_from)
-    if date_to:
-        conditions.append(Trade.transaction_date <= date_to)
+    if from_date:
+        conditions.append(Trade.transaction_date >= from_date)
+    if to_date:
+        conditions.append(Trade.transaction_date <= to_date)
 
     where_clause = and_(*conditions) if conditions else None
 
@@ -151,19 +152,28 @@ def list_trades(
 
 @router.get("/trades.csv")
 def export_trades_csv(
+    request: Request,
     _: None = Depends(_require_api_login),
     db: Session = Depends(get_db),
-    form: Optional[str] = None,
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    limit: int = 5000,
+    form: Optional[str] = Query(default=None, max_length=32),
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    limit: int = Query(default=5000, ge=1, le=5000),
 ) -> Response:
-    limit = max(1, min(int(limit or 5000), 5000))
-    date_from = _parse_iso_date(from_date)
-    date_to = _parse_iso_date(to_date)
+    allowed_params = {"form", "ticker", "person", "type", "from", "to", "limit"}
+    unexpected = sorted(set(request.query_params.keys()) - allowed_params)
+    if unexpected:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unexpected query parameter(s): {', '.join(unexpected)}",
+        )
 
     conditions = []
     if form:
@@ -174,9 +184,11 @@ def export_trades_csv(
         elif normalized_form:
             conditions.append(func.lower(Trade.form) == normalized_form.lower())
     if ticker:
-        conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
+        pattern = sql_like_contains(ticker.strip().lower())
+        conditions.append(func.lower(Trade.ticker).like(pattern, escape="\\"))
     if person:
-        conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
+        pattern = sql_like_contains(person.strip().lower())
+        conditions.append(func.lower(Trade.person_name).like(pattern, escape="\\"))
     if tx_type:
         tx_value = tx_type.strip().lower()
         base = tx_value
@@ -195,10 +207,10 @@ def export_trades_csv(
                 func.lower(Trade.form).in_(candidates),
             )
         )
-    if date_from:
-        conditions.append(Trade.transaction_date >= date_from)
-    if date_to:
-        conditions.append(Trade.transaction_date <= date_to)
+    if from_date:
+        conditions.append(Trade.transaction_date >= from_date)
+    if to_date:
+        conditions.append(Trade.transaction_date <= to_date)
 
     stmt = select(Trade)
     if conditions:

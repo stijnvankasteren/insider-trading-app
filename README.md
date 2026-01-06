@@ -73,7 +73,7 @@ Body:
     - Range (e.g. congress trades): `amount_usd_low` (or `amountUsdLow`) + `amount_usd_high` (or `amountUsdHigh`)
   - `shares`, `price_usd` (or `priceUsd`)
   - `url`
-- Any extra fields will be stored in `raw`.
+- Any extra fields will be stored in `raw` (unless `INGEST_REJECT_EXTRA_FIELDS=true`).
 
 In n8n, use an **HTTP Request** node:
 - Method: `POST`
@@ -113,6 +113,11 @@ Recommended:
 - Run Postgres (managed or Docker).
 - Run this app behind Nginx/Caddy with HTTPS.
 - Configure `DATABASE_URL`, `INGEST_SECRET`, and (recommended) auth vars (`AUTH_DISABLED=false`, `APP_PASSWORD`, `SESSION_SECRET`).
+
+Security notes:
+- Rate limiting is enabled by default (returns `429` + `Retry-After`). Tune via `RATE_LIMIT_*` env vars.
+- If you deploy behind a trusted reverse proxy, set `TRUST_PROXY_HEADERS=true` so IP-based limits use `X-Forwarded-For`.
+- Ingest secret rotation: set a new `INGEST_SECRET` and keep the old value in `INGEST_SECRET_PREVIOUS` (or use `INGEST_SECRETS`).
 
 ### Docker (app + Postgres)
 

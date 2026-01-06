@@ -7,11 +7,11 @@ import secrets
 import base64
 import hashlib
 import hmac
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, or_, select
@@ -22,21 +22,13 @@ from app.db import get_db
 from app.forms import FORM_LABELS, FORM_PREFIX_ORDER, form_prefix, normalize_form
 from app.market_data import MarketDataError, PricePoint, fetch_stooq_daily_prices
 from app.models import Subscriber, Trade, User, WatchlistItem
+from app.sanitization import sql_like_contains
 from app.settings import get_settings
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 _EMAIL_RE = re.compile(r"^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
-
-
-def _parse_iso_date(value: Optional[str]) -> Optional[dt.date]:
-    if not value:
-        return None
-    try:
-        return dt.date.fromisoformat(value)
-    except ValueError:
-        return None
 
 
 def _build_url(path: str, params: dict[str, Any]) -> str:
@@ -48,6 +40,36 @@ def _build_url(path: str, params: dict[str, Any]) -> str:
     if not clean:
         return path
     return f"{path}?{urlencode(clean)}"
+
+
+def _safe_next_path(value: Optional[str], *, default: str = "/app") -> str:
+    """
+    Prevent open redirects by only allowing local absolute paths ("/...").
+
+    This is applied to all `next` parameters used in redirects.
+    """
+
+    if not value:
+        return default
+
+    candidate = value.strip()
+    if not candidate or len(candidate) > 2048:
+        return default
+
+    parts = urlsplit(candidate)
+    if parts.scheme or parts.netloc:
+        return default
+
+    path = parts.path or ""
+    if not path.startswith("/") or path.startswith("//") or "\\" in path:
+        return default
+
+    out = path
+    if parts.query:
+        out = f"{out}?{parts.query}"
+    if parts.fragment:
+        out = f"{out}#{parts.fragment}"
+    return out
 
 
 def _attach_trade_price_changes(trades: list[Trade]) -> None:
@@ -230,19 +252,20 @@ def terms(request: Request):
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login(request: Request, next: str = "/app"):
+def login(request: Request, next: str = Query(default="/app", max_length=2048)):
     settings = get_settings()
+    next_url = _safe_next_path(next, default="/app")
     if settings.auth_disabled:
-        return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
     return _render(
         request,
         "login.html",
         {
             "page_title": "Login",
-            "next": next,
+            "next": next_url,
             "error": None,
             "email": "",
-            "signup_url": _build_url("/signup", {"next": next}),
+            "signup_url": _build_url("/signup", {"next": next_url}),
         },
     )
 
@@ -250,15 +273,16 @@ def login(request: Request, next: str = "/app"):
 @router.post("/login", response_class=HTMLResponse)
 def login_submit(
     request: Request,
-    csrf: Optional[str] = Form(None),
-    email: str = Form(""),
-    password: str = Form(...),
-    next: str = Form("/app"),
+    csrf: Optional[str] = Form(None, max_length=256),
+    email: str = Form("", max_length=320),
+    password: str = Form(..., max_length=1024),
+    next: str = Form("/app", max_length=2048),
     db: Session = Depends(get_db),
 ):
     settings = get_settings()
+    next_url = _safe_next_path(next, default="/app")
     if settings.auth_disabled:
-        return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
     _require_csrf(request, csrf)
     if not settings.session_secret:
         raise HTTPException(
@@ -275,9 +299,9 @@ def login_submit(
                 "login.html",
                 {
                     "page_title": "Login",
-                    "next": next,
+                    "next": next_url,
                     "email": normalized_email,
-                    "signup_url": _build_url("/signup", {"next": next}),
+                    "signup_url": _build_url("/signup", {"next": next_url}),
                     "error": "Invalid email or password.",
                 },
             )
@@ -289,9 +313,9 @@ def login_submit(
                 "login.html",
                 {
                     "page_title": "Login",
-                    "next": next,
+                    "next": next_url,
                     "email": normalized_email,
-                    "signup_url": _build_url("/signup", {"next": next}),
+                    "signup_url": _build_url("/signup", {"next": next_url}),
                     "error": "Invalid email or password.",
                 },
             )
@@ -299,7 +323,7 @@ def login_submit(
         request.session.clear()
         request.session["user"] = normalized_email
         request.session["csrf"] = secrets.token_urlsafe(32)
-        return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
     if not settings.app_password:
         return _render(
@@ -307,9 +331,9 @@ def login_submit(
             "login.html",
             {
                 "page_title": "Login",
-                "next": next,
+                "next": next_url,
                 "email": "",
-                "signup_url": _build_url("/signup", {"next": next}),
+                "signup_url": _build_url("/signup", {"next": next_url}),
                 "error": "No account email given, and APP_PASSWORD is not configured for admin login.",
             },
         )
@@ -320,9 +344,9 @@ def login_submit(
             "login.html",
             {
                 "page_title": "Login",
-                "next": next,
+                "next": next_url,
                 "email": "",
-                "signup_url": _build_url("/signup", {"next": next}),
+                "signup_url": _build_url("/signup", {"next": next_url}),
                 "error": "Invalid password.",
             },
         )
@@ -330,7 +354,7 @@ def login_submit(
     request.session.clear()
     request.session["user"] = "admin"
     request.session["csrf"] = secrets.token_urlsafe(32)
-    return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/logout")
@@ -357,8 +381,8 @@ def subscribe(request: Request, ok: int = 0):
 @router.post("/subscribe", response_class=HTMLResponse)
 def subscribe_submit(
     request: Request,
-    email: str = Form(...),
-    csrf: Optional[str] = Form(None),
+    email: str = Form(..., max_length=320),
+    csrf: Optional[str] = Form(None, max_length=256),
     db: Session = Depends(get_db),
 ):
     if "session" in request.scope:
@@ -384,16 +408,17 @@ def subscribe_submit(
 
 
 @router.get("/signup", response_class=HTMLResponse)
-def signup(request: Request, next: str = "/app"):
+def signup(request: Request, next: str = Query(default="/app", max_length=2048)):
+    next_url = _safe_next_path(next, default="/app")
     return _render(
         request,
         "signup.html",
         {
             "page_title": "Create account",
-            "next": next,
+            "next": next_url,
             "error": None,
             "email": "",
-            "login_url": _build_url("/login", {"next": next}),
+            "login_url": _build_url("/login", {"next": next_url}),
         },
     )
 
@@ -401,16 +426,17 @@ def signup(request: Request, next: str = "/app"):
 @router.post("/signup", response_class=HTMLResponse)
 def signup_submit(
     request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    password_confirm: str = Form(...),
-    subscribe_updates: Optional[str] = Form(None),
-    next: str = Form("/app"),
-    csrf: Optional[str] = Form(None),
+    email: str = Form(..., max_length=320),
+    password: str = Form(..., max_length=1024),
+    password_confirm: str = Form(..., max_length=1024),
+    subscribe_updates: Optional[str] = Form(None, max_length=16),
+    next: str = Form("/app", max_length=2048),
+    csrf: Optional[str] = Form(None, max_length=256),
     db: Session = Depends(get_db),
 ):
     if "session" in request.scope:
         _require_csrf(request, csrf)
+    next_url = _safe_next_path(next, default="/app")
 
     normalized_email = _validate_email(email)
     if not normalized_email:
@@ -419,9 +445,9 @@ def signup_submit(
             "signup.html",
             {
                 "page_title": "Create account",
-                "next": next,
+                "next": next_url,
                 "email": email,
-                "login_url": _build_url("/login", {"next": next}),
+                "login_url": _build_url("/login", {"next": next_url}),
                 "error": "Please enter a valid email address.",
             },
         )
@@ -431,9 +457,9 @@ def signup_submit(
             "signup.html",
             {
                 "page_title": "Create account",
-                "next": next,
+                "next": next_url,
                 "email": normalized_email,
-                "login_url": _build_url("/login", {"next": next}),
+                "login_url": _build_url("/login", {"next": next_url}),
                 "error": "Password must be at least 8 characters.",
             },
         )
@@ -443,9 +469,9 @@ def signup_submit(
             "signup.html",
             {
                 "page_title": "Create account",
-                "next": next,
+                "next": next_url,
                 "email": normalized_email,
-                "login_url": _build_url("/login", {"next": next}),
+                "login_url": _build_url("/login", {"next": next_url}),
                 "error": "Passwords do not match.",
             },
         )
@@ -457,9 +483,9 @@ def signup_submit(
             "signup.html",
             {
                 "page_title": "Create account",
-                "next": next,
+                "next": next_url,
                 "email": normalized_email,
-                "login_url": _build_url("/login", {"next": next}),
+                "login_url": _build_url("/login", {"next": next_url}),
                 "error": "An account with this email already exists. Try logging in.",
             },
         )
@@ -482,9 +508,9 @@ def signup_submit(
             "signup.html",
             {
                 "page_title": "Create account",
-                "next": next,
+                "next": next_url,
                 "email": normalized_email,
-                "login_url": _build_url("/login", {"next": next}),
+                "login_url": _build_url("/login", {"next": next_url}),
                 "error": "Could not create account. Try a different email.",
             },
         )
@@ -493,7 +519,7 @@ def signup_submit(
         request.session.clear()
         request.session["user"] = normalized_email
         request.session["csrf"] = secrets.token_urlsafe(32)
-    return RedirectResponse(url=next or "/app", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/app", response_class=HTMLResponse)
@@ -552,22 +578,21 @@ def _render_form_trades(
     ticker: Optional[str],
     person: Optional[str],
     tx_type: Optional[str],
-    from_date: Optional[str],
-    to_date: Optional[str],
+    from_date: Optional[dt.date],
+    to_date: Optional[dt.date],
     page: int,
     page_size: int,
 ) -> HTMLResponse:
     page_size = max(10, min(int(page_size or 50), 200))
     page = max(int(page or 1), 1)
 
-    date_from = _parse_iso_date(from_date)
-    date_to = _parse_iso_date(to_date)
-
     conditions = [func.lower(Trade.form).like(f"{form_prefix_value.lower()}%")]
     if ticker:
-        conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
+        pattern = sql_like_contains(ticker.strip().lower())
+        conditions.append(func.lower(Trade.ticker).like(pattern, escape="\\"))
     if person:
-        conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
+        pattern = sql_like_contains(person.strip().lower())
+        conditions.append(func.lower(Trade.person_name).like(pattern, escape="\\"))
     if tx_type:
         tx_value = tx_type.strip().lower()
         base = tx_value
@@ -586,10 +611,10 @@ def _render_form_trades(
                 func.lower(Trade.form).in_(candidates),
             )
         )
-    if date_from:
-        conditions.append(Trade.transaction_date >= date_from)
-    if date_to:
-        conditions.append(Trade.transaction_date <= date_to)
+    if from_date:
+        conditions.append(Trade.transaction_date >= from_date)
+    if to_date:
+        conditions.append(Trade.transaction_date <= to_date)
 
     where_clause = and_(*conditions)
 
@@ -616,8 +641,8 @@ def _render_form_trades(
         "ticker": ticker or "",
         "person": person or "",
         "type": tx_type or "",
-        "from": from_date or "",
-        "to": to_date or "",
+        "from": from_date.isoformat() if from_date else "",
+        "to": to_date.isoformat() if to_date else "",
     }
     base_params = {**filters, "page_size": page_size}
     prev_url = (
@@ -626,7 +651,7 @@ def _render_form_trades(
     next_url = (
         _build_url(base_path, {**base_params, "page": page + 1}) if page < total_pages else None
     )
-    export_url = _build_url("/api/trades.csv", {**base_params, "form": form_prefix_value})
+    export_url = _build_url("/api/trades.csv", {**filters, "form": form_prefix_value})
 
     start = offset + 1 if total > 0 else 0
     end = min(offset + len(trades), total)
@@ -658,13 +683,17 @@ def app_form3(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -689,13 +718,17 @@ def app_insiders(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -720,13 +753,17 @@ def app_congress(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -751,13 +788,17 @@ def app_schedule13d(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -782,13 +823,17 @@ def app_form13f(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -813,13 +858,17 @@ def app_form8k(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -844,13 +893,17 @@ def app_form10k(
     request: Request,
     db: Session = Depends(get_db),
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
+    ticker: Optional[str] = Query(
+        default=None,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
+    person: Optional[str] = Query(default=None, max_length=256),
+    tx_type: Optional[str] = Query(default=None, alias="type", max_length=32),
+    from_date: Optional[dt.date] = Query(default=None, alias="from"),
+    to_date: Optional[dt.date] = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
 ):
     return _render_form_trades(
         request,
@@ -875,7 +928,7 @@ def app_search(
     request: Request,
     db: Session = Depends(get_db),
     user_id: str = Depends(_require_login),
-    q: Optional[str] = None,
+    q: Optional[str] = Query(default=None, max_length=80),
 ):
     query = (q or "").strip()
 
@@ -883,7 +936,7 @@ def app_search(
     people_results: list[dict[str, Any]] = []
 
     if query:
-        like = f"%{query.lower()}%"
+        like = sql_like_contains(query.lower())
         tickers = db.execute(
             select(
                 Trade.ticker,
@@ -893,8 +946,8 @@ def app_search(
             .where(Trade.ticker.is_not(None))
             .where(
                 or_(
-                    func.lower(Trade.ticker).like(like),
-                    func.lower(Trade.company_name).like(like),
+                    func.lower(Trade.ticker).like(like, escape="\\"),
+                    func.lower(Trade.company_name).like(like, escape="\\"),
                 )
             )
             .group_by(Trade.ticker)
@@ -919,7 +972,7 @@ def app_search(
                 func.count(Trade.id),
             )
             .where(Trade.person_slug.is_not(None))
-            .where(func.lower(Trade.person_name).like(like))
+            .where(func.lower(Trade.person_name).like(like, escape="\\"))
             .group_by(Trade.person_slug)
             .order_by(func.count(Trade.id).desc())
             .limit(25)
@@ -962,8 +1015,8 @@ def app_search(
 def app_prices(
     request: Request,
     _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    range: str = "1m",
+    ticker: Optional[str] = Query(default=None, max_length=16),
+    range: str = Query(default="1m", max_length=8),
 ):
     raw_ticker = (ticker or "").strip()
     selected_range = (range or "1m").strip().lower()
@@ -1128,13 +1181,14 @@ def watchlist_add(
     request: Request,
     db: Session = Depends(get_db),
     user_id: str = Depends(_require_login),
-    kind: str = Form(...),
-    value: str = Form(...),
-    label: Optional[str] = Form(default=None),
-    next: str = Form("/app/watchlist"),
-    csrf_token: Optional[str] = Form(default=None),
+    kind: str = Form(..., max_length=16),
+    value: str = Form(..., max_length=256),
+    label: Optional[str] = Form(default=None, max_length=256),
+    next: str = Form("/app/watchlist", max_length=2048),
+    csrf_token: Optional[str] = Form(default=None, max_length=256),
 ):
     _require_csrf(request, csrf_token)
+    next_url = _safe_next_path(next, default="/app/watchlist")
 
     kind_norm = kind.strip().lower()
     if kind_norm not in {"ticker", "person"}:
@@ -1146,8 +1200,18 @@ def watchlist_add(
 
     if kind_norm == "ticker":
         value_norm = value_norm.upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9._-]{0,15}", value_norm):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid ticker format",
+            )
     else:
         value_norm = _slugify(value_norm)
+        if not value_norm:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid person name",
+            )
 
     existing = db.scalar(
         select(WatchlistItem).where(
@@ -1167,7 +1231,7 @@ def watchlist_add(
         )
         db.commit()
 
-    return RedirectResponse(url=next or "/app/watchlist", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/app/watchlist/remove")
@@ -1175,24 +1239,30 @@ def watchlist_remove(
     request: Request,
     db: Session = Depends(get_db),
     user_id: str = Depends(_require_login),
-    item_id: int = Form(...),
-    next: str = Form("/app/watchlist"),
-    csrf_token: Optional[str] = Form(default=None),
+    item_id: int = Form(..., ge=1),
+    next: str = Form("/app/watchlist", max_length=2048),
+    csrf_token: Optional[str] = Form(default=None, max_length=256),
 ):
     _require_csrf(request, csrf_token)
+    next_url = _safe_next_path(next, default="/app/watchlist")
 
     item = db.scalar(select(WatchlistItem).where(WatchlistItem.id == item_id))
     if not item or item.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     db.delete(item)
     db.commit()
-    return RedirectResponse(url=next or "/app/watchlist", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/app/companies/{ticker}", response_class=HTMLResponse)
 def app_company(
     request: Request,
-    ticker: str,
+    ticker: str = Path(
+        ...,
+        min_length=1,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$",
+    ),
     db: Session = Depends(get_db),
     user_id: str = Depends(_require_login),
 ):
@@ -1270,7 +1340,12 @@ def app_company(
 @router.get("/app/people/{slug}", response_class=HTMLResponse)
 def app_person(
     request: Request,
-    slug: str,
+    slug: str = Path(
+        ...,
+        min_length=1,
+        max_length=256,
+        pattern=r"^[a-z0-9][a-z0-9-]{0,255}$",
+    ),
     db: Session = Depends(get_db),
     user_id: str = Depends(_require_login),
 ):
