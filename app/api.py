@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.ingest import router as ingest_router
 from app.models import Trade
+from app.sources import normalize_source
 from app.settings import get_settings
 
 router = APIRouter()
@@ -70,8 +71,15 @@ def list_trades(
     date_to = _parse_iso_date(to_date)
 
     conditions = []
-    if source:
-        conditions.append(Trade.source == source.lower())
+    if source is not None:
+        source_norm = normalize_source(source)
+        if source_norm:
+            conditions.append(Trade.source == source_norm)
+        elif source.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid source: {source}",
+            )
     if ticker:
         conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
     if person:
@@ -158,8 +166,15 @@ def export_trades_csv(
     date_to = _parse_iso_date(to_date)
 
     conditions = []
-    if source:
-        conditions.append(Trade.source == source.lower())
+    if source is not None:
+        source_norm = normalize_source(source)
+        if source_norm:
+            conditions.append(Trade.source == source_norm)
+        elif source.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid source: {source}",
+            )
     if ticker:
         conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
     if person:

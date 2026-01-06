@@ -50,6 +50,7 @@ def init_db() -> None:
     _ensure_sqlite_dir_exists(settings.database_url)
     Base.metadata.create_all(bind=engine)
     _migrate_trade_form_column()
+    _migrate_trade_sources()
     _cleanup_empty_trades()
 
 
@@ -94,6 +95,27 @@ def _migrate_trade_form_column() -> None:
                 WHERE transaction_type IS NOT NULL
                   AND form IS NOT NULL
                   AND {is_form_clause}
+                """
+            )
+        )
+
+
+def _migrate_trade_sources() -> None:
+    inspector = inspect(engine)
+    if "trades" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("trades")}
+    if "source" not in columns:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                SET source = 'form4'
+                WHERE lower(source) = 'insider'
                 """
             )
         )

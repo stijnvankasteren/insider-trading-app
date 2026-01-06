@@ -105,7 +105,7 @@
                   {{ t.transaction_date or "—" }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
-                  {{ t.source }}
+                  {{ source_labels.get(t.source, t.source) }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap font-medium">
                   {% if t.ticker %}
@@ -129,7 +129,7 @@
 	                </td>
 	                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
 	                  {% if t.amount_usd_low is not none or t.amount_usd_high is not none %}
-	                    {% if t.source == "insider" %}
+	                      {% if t.source in ["form4", "insider"] %}
 	                      ${{ t.amount_usd_low if t.amount_usd_low is not none else (t.amount_usd_high if t.amount_usd_high is not none else "?") }}
 	                    {% else %}
 	                      ${{ t.amount_usd_low if t.amount_usd_low is not none else "?" }} – ${{ t.amount_usd_high if t.amount_usd_high is not none else "?" }}

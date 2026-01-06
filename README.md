@@ -40,7 +40,7 @@ Example payload (single object or an array of objects):
 
 ```json
 {
-  "source": "insider",
+  "source": "form4",
   "external_id": "sec:123456",
   "ticker": "AAPL",
   "company_name": "Apple Inc.",
@@ -62,14 +62,14 @@ Headers:
 
 Body:
 - Single object or array of objects.
-- Required: `source` (`insider`, `congress`, etc)
+- Required: `source` (`form4`, `schedule13d`, `form13f`, `form8k`, `form10k`, `congress`)
 - Recommended: `external_id` (or `externalId`) for idempotency/upserts.
 - Optional fields (with common aliases):
   - `ticker` (or `symbol`), `company_name` (or `companyName`), `person_name` (or `personName`)
   - `transaction_type` (or `type`), `form` (or `issuerForm` / `reportingForm`)
   - `transaction_date` (or `transactionDate`, `YYYY-MM-DD`), `filed_at` (or `filedAt`, ISO datetime)
   - Amount (USD):
-    - Insider trades (`source=insider`): calculated as `shares * price_usd` (overrides any amount fields)
+    - Form 4 (`source=form4`): calculated as `shares * price_usd` (overrides any amount fields)
     - Range (e.g. congress trades): `amount_usd_low` (or `amountUsdLow`) + `amount_usd_high` (or `amountUsdHigh`)
   - `shares`, `price_usd` (or `priceUsd`)
   - `url`
@@ -87,7 +87,7 @@ Quick test (local):
 curl -sS -X POST "http://localhost:8000/api/ingest/trades" \
   -H "content-type: application/json" \
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')" \
-  -d '{"source":"insider","external_id":"demo:curl:1","ticker":"TSLA","person_name":"Test Person","transaction_type":"BUY","transaction_date":"2025-12-29","shares":10,"price_usd":250}'
+  -d '{"source":"form4","external_id":"demo:curl:1","ticker":"TSLA","person_name":"Test Person","transaction_type":"BUY","transaction_date":"2025-12-29","shares":10,"price_usd":250}'
 ```
 
 ### Delete trades
@@ -100,12 +100,12 @@ Safety: add `?confirm=true` or the request will be rejected.
 curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?confirm=true" \
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
 
-# Only delete a single source ("insider" / "congress" / etc)
-curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?source=insider&confirm=true" \
+# Only delete a single source ("form4" / "schedule13d" / "form13f" / "form8k" / "form10k" / "congress")
+curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?source=form4&confirm=true" \
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
 ```
 
-The UI pages `/app/insiders`, `/app/congress`, `/app/search`, `/app/watchlist` will read from the database.
+The UI pages `/app/insiders`, `/app/13d`, `/app/13f`, `/app/8k`, `/app/10k`, `/app/congress`, `/app/search`, `/app/watchlist` will read from the database.
 
 ## Deploy (Linux server)
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Trade
+from app.sources import normalize_source
 from app.settings import get_settings
 
 router = APIRouter(tags=["ingest"])
@@ -200,9 +201,13 @@ def ingest_trades(
     errors: list[dict[str, Any]] = []
 
     for idx, raw in enumerate(items):
-        source = (raw.get("source") or "").strip().lower()
+        raw_source = raw.get("source")
+        source = normalize_source(raw_source)
         if not source:
-            errors.append({"index": idx, "error": "Missing 'source'"})
+            if raw_source is None or (isinstance(raw_source, str) and not raw_source.strip()):
+                errors.append({"index": idx, "error": "Missing 'source'"})
+            else:
+                errors.append({"index": idx, "error": f"Invalid 'source': {raw_source!r}"})
             continue
 
         ticker_value = _clean_str(raw.get("ticker") or raw.get("symbol"))
@@ -223,13 +228,13 @@ def ingest_trades(
             form_value = form_value.strip()
             if not form_value:
                 form_value = None
-            elif not re.match(r"^form\\b", form_value, flags=re.IGNORECASE):
+            elif not re.match(r"^(form|schedule)\\b", form_value, flags=re.IGNORECASE):
                 form_value = f"FORM {form_value}"
 
         if (
             not form_value
             and isinstance(tx_type_value, str)
-            and re.match(r"^form\\b", tx_type_value, flags=re.IGNORECASE)
+            and re.match(r"^(form|schedule)\\b", tx_type_value, flags=re.IGNORECASE)
         ):
             form_value = tx_type_value
             tx_type_value = None
@@ -244,7 +249,7 @@ def ingest_trades(
         url_value = _clean_str(raw.get("url"))
         external_id_value = _clean_str(raw.get("external_id") or raw.get("externalId"))
 
-        if source == "insider" and shares_value is not None and price_usd_value is not None:
+        if source == "form4" and shares_value is not None and price_usd_value is not None:
             computed_amount = (price_usd_value * Decimal(shares_value)).to_integral_value(
                 rounding=ROUND_HALF_UP
             )
@@ -254,7 +259,7 @@ def ingest_trades(
             if amount_usd_low is None and amount_usd_high is None and amount_usd is not None:
                 amount_usd_low = amount_usd
                 amount_usd_high = amount_usd
-            if source == "insider":
+            if source == "form4":
                 if amount_usd_low is None and amount_usd_high is not None:
                     amount_usd_low = amount_usd_high
                 elif amount_usd_high is None and amount_usd_low is not None:
@@ -268,6 +273,18 @@ def ingest_trades(
                         }
                     )
                     continue
+
+        if not form_value:
+            if source == "form4":
+                form_value = "FORM 4"
+            elif source == "schedule13d":
+                form_value = "SCHEDULE 13D"
+            elif source == "form13f":
+                form_value = "FORM 13F"
+            elif source == "form8k":
+                form_value = "FORM 8-K"
+            elif source == "form10k":
+                form_value = "FORM 10-K"
 
         payload: dict[str, Any] = {
             "source": source,
@@ -370,8 +387,15 @@ def delete_trades(
     source_value: Optional[str] = None
     stmt = delete(Trade)
     if source is not None:
-        normalized = source.strip().lower()
-        if normalized:
+        if not source.strip():
+            source_value = None
+        else:
+            normalized = normalize_source(source)
+            if not normalized:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid source: {source}",
+                )
             source_value = normalized
             stmt = stmt.where(Trade.source == normalized)
 

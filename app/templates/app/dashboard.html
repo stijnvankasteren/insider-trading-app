@@ -14,7 +14,13 @@
     </div>
     <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
       <div class="text-xs text-slate-400">Newest source</div>
-      <div class="mt-1 text-2xl font-semibold">{{ latest_source or "—" }}</div>
+      <div class="mt-1 text-2xl font-semibold">
+        {% if latest_source %}
+          {{ source_labels.get(latest_source, latest_source) }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
       <div class="mt-2 text-xs text-slate-500">Connected via n8n</div>
     </div>
   </div>
@@ -44,7 +50,7 @@
                   {{ t.transaction_date or "—" }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
-                  {{ t.source }}
+                  {{ source_labels.get(t.source, t.source) }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap font-medium">
                   {% if t.ticker %}
@@ -68,7 +74,7 @@
 	                </td>
 	                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
 	                  {% if t.amount_usd_low is not none or t.amount_usd_high is not none %}
-	                    {% if t.source == "insider" %}
+	                  {% if t.source in ["form4", "insider"] %}
 	                      ${{ t.amount_usd_low if t.amount_usd_low is not none else (t.amount_usd_high if t.amount_usd_high is not none else "?") }}
 	                    {% else %}
 	                      ${{ t.amount_usd_low if t.amount_usd_low is not none else "?" }} – ${{ t.amount_usd_high if t.amount_usd_high is not none else "?" }}

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.market_data import MarketDataError, PricePoint, fetch_stooq_daily_prices
 from app.models import Subscriber, Trade, User, WatchlistItem
+from app.sources import SOURCE_LABELS, SOURCE_ORDER
 from app.settings import get_settings
 
 router = APIRouter()
@@ -108,6 +109,8 @@ def _base_context(request: Request) -> dict[str, Any]:
         "auth_disabled": settings.auth_disabled,
         "current_user": current_user,
         "csrf_token": csrf_token,
+        "source_labels": SOURCE_LABELS,
+        "source_order": SOURCE_ORDER,
     }
 
 
@@ -537,26 +540,30 @@ def app_dashboard(
     )
 
 
-@router.get("/app/insiders", response_class=HTMLResponse)
-def app_insiders(
+def _render_source_trades(
     request: Request,
-    db: Session = Depends(get_db),
-    _: str = Depends(_require_login),
-    ticker: Optional[str] = None,
-    person: Optional[str] = None,
-    tx_type: Optional[str] = Query(default=None, alias="type"),
-    from_date: Optional[str] = Query(default=None, alias="from"),
-    to_date: Optional[str] = Query(default=None, alias="to"),
-    page: int = 1,
-    page_size: int = 50,
-):
+    db: Session,
+    *,
+    source: str,
+    page_title: str,
+    page_subtitle: str,
+    template_name: str,
+    base_path: str,
+    ticker: Optional[str],
+    person: Optional[str],
+    tx_type: Optional[str],
+    from_date: Optional[str],
+    to_date: Optional[str],
+    page: int,
+    page_size: int,
+) -> HTMLResponse:
     page_size = max(10, min(int(page_size or 50), 200))
     page = max(int(page or 1), 1)
 
     date_from = _parse_iso_date(from_date)
     date_to = _parse_iso_date(to_date)
 
-    conditions = [Trade.source == "insider"]
+    conditions = [Trade.source == source]
     if ticker:
         conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
     if person:
@@ -611,24 +618,22 @@ def app_insiders(
     }
     base_params = {**filters, "page_size": page_size}
     prev_url = (
-        _build_url("/app/insiders", {**base_params, "page": page - 1}) if page > 1 else None
+        _build_url(base_path, {**base_params, "page": page - 1}) if page > 1 else None
     )
     next_url = (
-        _build_url("/app/insiders", {**base_params, "page": page + 1})
-        if page < total_pages
-        else None
+        _build_url(base_path, {**base_params, "page": page + 1}) if page < total_pages else None
     )
-    export_url = _build_url("/api/trades.csv", {**base_params, "source": "insider"})
+    export_url = _build_url("/api/trades.csv", {**base_params, "source": source})
 
     start = offset + 1 if total > 0 else 0
     end = min(offset + len(trades), total)
 
     return _render(
         request,
-        "app/insiders.html",
+        template_name,
         {
-            "page_title": "Insider Trading",
-            "page_subtitle": "Transactions reported by company insiders.",
+            "page_title": page_title,
+            "page_subtitle": page_subtitle,
             "trades": trades,
             "filters": filters,
             "page": page,
@@ -637,11 +642,42 @@ def app_insiders(
             "total_pages": total_pages,
             "prev_url": prev_url,
             "next_url": next_url,
-            "reset_url": "/app/insiders",
+            "reset_url": base_path,
             "export_url": export_url,
             "showing_start": start,
             "showing_end": end,
         },
+    )
+
+
+@router.get("/app/insiders", response_class=HTMLResponse)
+def app_insiders(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    person: Optional[str] = None,
+    tx_type: Optional[str] = Query(default=None, alias="type"),
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    return _render_source_trades(
+        request,
+        db,
+        source="form4",
+        page_title="Form 4",
+        page_subtitle="Insider trading transactions (SEC Form 4).",
+        template_name="app/insiders.html",
+        base_path="/app/insiders",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
     )
 
 
@@ -658,98 +694,145 @@ def app_congress(
     page: int = 1,
     page_size: int = 50,
 ):
-    page_size = max(10, min(int(page_size or 50), 200))
-    page = max(int(page or 1), 1)
-
-    date_from = _parse_iso_date(from_date)
-    date_to = _parse_iso_date(to_date)
-
-    conditions = [Trade.source == "congress"]
-    if ticker:
-        conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
-    if person:
-        conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
-    if tx_type:
-        tx_value = tx_type.strip().lower()
-        candidates = {tx_value}
-        if tx_value.startswith("form"):
-            without_prefix = tx_value.removeprefix("form").strip()
-            if without_prefix:
-                candidates.add(without_prefix)
-        else:
-            candidates.add(f"form {tx_value}".strip())
-        conditions.append(
-            or_(
-                func.lower(Trade.transaction_type).in_(candidates),
-                func.lower(Trade.form).in_(candidates),
-            )
-        )
-    if date_from:
-        conditions.append(Trade.transaction_date >= date_from)
-    if date_to:
-        conditions.append(Trade.transaction_date <= date_to)
-
-    where_clause = and_(*conditions)
-
-    total = int(db.scalar(select(func.count()).select_from(Trade).where(where_clause)) or 0)
-    total_pages = max(1, math.ceil(total / page_size)) if total else 1
-    page = min(page, total_pages)
-
-    offset = (page - 1) * page_size
-    trades = db.scalars(
-        select(Trade)
-        .where(where_clause)
-        .order_by(
-            Trade.filed_at.is_(None),
-            Trade.filed_at.desc(),
-            Trade.created_at.desc(),
-        )
-        .limit(page_size)
-        .offset(offset)
-    ).all()
-
-    _attach_trade_price_changes(trades)
-
-    filters = {
-        "ticker": ticker or "",
-        "person": person or "",
-        "type": tx_type or "",
-        "from": from_date or "",
-        "to": to_date or "",
-    }
-    base_params = {**filters, "page_size": page_size}
-    prev_url = (
-        _build_url("/app/congress", {**base_params, "page": page - 1}) if page > 1 else None
-    )
-    next_url = (
-        _build_url("/app/congress", {**base_params, "page": page + 1})
-        if page < total_pages
-        else None
-    )
-    export_url = _build_url("/api/trades.csv", {**base_params, "source": "congress"})
-
-    start = offset + 1 if total > 0 else 0
-    end = min(offset + len(trades), total)
-
-    return _render(
+    return _render_source_trades(
         request,
-        "app/congress.html",
-        {
-            "page_title": "Congress Trading",
-            "page_subtitle": "Trades reported by members of congress.",
-            "trades": trades,
-            "filters": filters,
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "total_pages": total_pages,
-            "prev_url": prev_url,
-            "next_url": next_url,
-            "reset_url": "/app/congress",
-            "export_url": export_url,
-            "showing_start": start,
-            "showing_end": end,
-        },
+        db,
+        source="congress",
+        page_title="Congress",
+        page_subtitle="Trades reported by members of congress.",
+        template_name="app/congress.html",
+        base_path="/app/congress",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/app/13d", response_class=HTMLResponse)
+def app_schedule13d(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    person: Optional[str] = None,
+    tx_type: Optional[str] = Query(default=None, alias="type"),
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    return _render_source_trades(
+        request,
+        db,
+        source="schedule13d",
+        page_title="Schedule 13D",
+        page_subtitle="Whale moves (SEC Schedule 13D filings; typically >5% ownership).",
+        template_name="app/schedule13d.html",
+        base_path="/app/13d",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/app/13f", response_class=HTMLResponse)
+def app_form13f(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    person: Optional[str] = None,
+    tx_type: Optional[str] = Query(default=None, alias="type"),
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    return _render_source_trades(
+        request,
+        db,
+        source="form13f",
+        page_title="Form 13F",
+        page_subtitle="Institutional holdings (portfolio updates from SEC Form 13F).",
+        template_name="app/form13f.html",
+        base_path="/app/13f",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/app/8k", response_class=HTMLResponse)
+def app_form8k(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    person: Optional[str] = None,
+    tx_type: Optional[str] = Query(default=None, alias="type"),
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    return _render_source_trades(
+        request,
+        db,
+        source="form8k",
+        page_title="Form 8-K",
+        page_subtitle="Stock splits and other events surfaced from SEC Form 8-K filings.",
+        template_name="app/form8k.html",
+        base_path="/app/8k",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/app/10k", response_class=HTMLResponse)
+def app_form10k(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    person: Optional[str] = None,
+    tx_type: Optional[str] = Query(default=None, alias="type"),
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    return _render_source_trades(
+        request,
+        db,
+        source="form10k",
+        page_title="Form 10-K",
+        page_subtitle="Risk factor changes highlighted from SEC Form 10-K filings.",
+        template_name="app/form10k.html",
+        base_path="/app/10k",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
     )
 
 
