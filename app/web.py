@@ -570,13 +570,16 @@ def _render_source_trades(
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
         tx_value = tx_type.strip().lower()
-        candidates = {tx_value}
-        if tx_value.startswith("form"):
-            without_prefix = tx_value.removeprefix("form").strip()
+        base = tx_value
+        if base.startswith("form"):
+            without_prefix = base.removeprefix("form").strip()
             if without_prefix:
-                candidates.add(without_prefix)
-        else:
-            candidates.add(f"form {tx_value}".strip())
+                base = without_prefix
+        elif base.startswith("schedule"):
+            without_prefix = base.removeprefix("schedule").strip()
+            if without_prefix:
+                base = without_prefix
+        candidates = {tx_value, base, f"form {base}".strip(), f"schedule {base}".strip()}
         conditions.append(
             or_(
                 func.lower(Trade.transaction_type).in_(candidates),
@@ -647,6 +650,37 @@ def _render_source_trades(
             "showing_start": start,
             "showing_end": end,
         },
+    )
+
+
+@router.get("/app/3", response_class=HTMLResponse)
+def app_form3(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_login),
+    ticker: Optional[str] = None,
+    person: Optional[str] = None,
+    tx_type: Optional[str] = Query(default=None, alias="type"),
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    return _render_source_trades(
+        request,
+        db,
+        source="form3",
+        page_title="Form 3",
+        page_subtitle="Initial beneficial ownership statements (SEC Form 3).",
+        template_name="app/form3.html",
+        base_path="/app/3",
+        ticker=ticker,
+        person=person,
+        tx_type=tx_type,
+        from_date=from_date,
+        to_date=to_date,
+        page=page,
+        page_size=page_size,
     )
 
 

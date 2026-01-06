@@ -49,7 +49,7 @@ class Trade(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    # "form4" | "schedule13d" | "form13f" | "form8k" | "form10k" | "congress"
+    # "form3" | "form4" | "schedule13d" | "form13f" | "form8k" | "form10k" | "congress"
     source: Mapped[str] = mapped_column(String(32), index=True)
 
     # Idempotency key from n8n (recommended), or generated server-side.

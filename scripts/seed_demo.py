@@ -18,6 +18,21 @@ def main() -> None:
 
     demo_trades = [
         Trade(
+            source="form3",
+            external_id="demo:form3:aapl:1",
+            ticker="AAPL",
+            company_name="Apple Inc.",
+            person_name="Jane Doe",
+            person_slug="jane-doe",
+            transaction_type="FILED",
+            transaction_date=(now.date() - dt.timedelta(days=2)),
+            filed_at=now - dt.timedelta(hours=22),
+            shares=1000,
+            price_usd=189.12,
+            url="https://example.com",
+            raw={"demo": True},
+        ),
+        Trade(
             source="form4",
             external_id="demo:form4:aapl:1",
             ticker="AAPL",

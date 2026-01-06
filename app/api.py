@@ -86,13 +86,16 @@ def list_trades(
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
         tx_value = tx_type.strip().lower()
-        candidates = {tx_value}
-        if tx_value.startswith("form"):
-            without_prefix = tx_value.removeprefix("form").strip()
+        base = tx_value
+        if base.startswith("form"):
+            without_prefix = base.removeprefix("form").strip()
             if without_prefix:
-                candidates.add(without_prefix)
-        else:
-            candidates.add(f"form {tx_value}".strip())
+                base = without_prefix
+        elif base.startswith("schedule"):
+            without_prefix = base.removeprefix("schedule").strip()
+            if without_prefix:
+                base = without_prefix
+        candidates = {tx_value, base, f"form {base}".strip(), f"schedule {base}".strip()}
         conditions.append(
             or_(
                 func.lower(Trade.transaction_type).in_(candidates),
@@ -181,13 +184,16 @@ def export_trades_csv(
         conditions.append(func.lower(Trade.person_name).like(f"%{person.lower()}%"))
     if tx_type:
         tx_value = tx_type.strip().lower()
-        candidates = {tx_value}
-        if tx_value.startswith("form"):
-            without_prefix = tx_value.removeprefix("form").strip()
+        base = tx_value
+        if base.startswith("form"):
+            without_prefix = base.removeprefix("form").strip()
             if without_prefix:
-                candidates.add(without_prefix)
-        else:
-            candidates.add(f"form {tx_value}".strip())
+                base = without_prefix
+        elif base.startswith("schedule"):
+            without_prefix = base.removeprefix("schedule").strip()
+            if without_prefix:
+                base = without_prefix
+        candidates = {tx_value, base, f"form {base}".strip(), f"schedule {base}".strip()}
         conditions.append(
             or_(
                 func.lower(Trade.transaction_type).in_(candidates),

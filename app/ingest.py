@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Trade
-from app.sources import normalize_source
+from app.sources import infer_source_from_form, normalize_source
 from app.settings import get_settings
 
 router = APIRouter(tags=["ingest"])
@@ -201,15 +201,6 @@ def ingest_trades(
     errors: list[dict[str, Any]] = []
 
     for idx, raw in enumerate(items):
-        raw_source = raw.get("source")
-        source = normalize_source(raw_source)
-        if not source:
-            if raw_source is None or (isinstance(raw_source, str) and not raw_source.strip()):
-                errors.append({"index": idx, "error": "Missing 'source'"})
-            else:
-                errors.append({"index": idx, "error": f"Invalid 'source': {raw_source!r}"})
-            continue
-
         ticker_value = _clean_str(raw.get("ticker") or raw.get("symbol"))
         if ticker_value:
             ticker_value = ticker_value.upper()
@@ -218,6 +209,9 @@ def ingest_trades(
         person_name_value = _clean_str(raw.get("person_name") or raw.get("personName"))
 
         tx_type_value = _clean_str(raw.get("transaction_type") or raw.get("type"))
+
+        raw_source = raw.get("source")
+        explicit_source = normalize_source(raw_source) if raw_source is not None else None
 
         form_value = raw.get("form") or raw.get("issuerForm") or raw.get("reportingForm")
         if isinstance(form_value, bool):
@@ -239,6 +233,31 @@ def ingest_trades(
             form_value = tx_type_value
             tx_type_value = None
 
+        if not form_value and tx_type_value:
+            inferred_from_type = infer_source_from_form(tx_type_value)
+            if inferred_from_type:
+                form_value = tx_type_value
+                tx_type_value = None
+
+        inferred_source = infer_source_from_form(form_value) if form_value else None
+        source = explicit_source or inferred_source
+        if not source:
+            if raw_source is None or (isinstance(raw_source, str) and not raw_source.strip()):
+                errors.append(
+                    {
+                        "index": idx,
+                        "error": "Missing 'source' (or provide a recognizable 'form')",
+                    }
+                )
+            else:
+                errors.append(
+                    {
+                        "index": idx,
+                        "error": f"Invalid 'source': {raw_source!r} (or provide a recognizable 'form')",
+                    }
+                )
+            continue
+
         shares_value = _parse_int(raw.get("shares"))
         price_usd_value = _parse_decimal(raw.get("price_usd") or raw.get("priceUsd"))
 
@@ -249,7 +268,7 @@ def ingest_trades(
         url_value = _clean_str(raw.get("url"))
         external_id_value = _clean_str(raw.get("external_id") or raw.get("externalId"))
 
-        if source == "form4" and shares_value is not None and price_usd_value is not None:
+        if source in ("form3", "form4") and shares_value is not None and price_usd_value is not None:
             computed_amount = (price_usd_value * Decimal(shares_value)).to_integral_value(
                 rounding=ROUND_HALF_UP
             )
@@ -259,7 +278,7 @@ def ingest_trades(
             if amount_usd_low is None and amount_usd_high is None and amount_usd is not None:
                 amount_usd_low = amount_usd
                 amount_usd_high = amount_usd
-            if source == "form4":
+            if source in ("form3", "form4"):
                 if amount_usd_low is None and amount_usd_high is not None:
                     amount_usd_low = amount_usd_high
                 elif amount_usd_high is None and amount_usd_low is not None:
@@ -275,7 +294,9 @@ def ingest_trades(
                     continue
 
         if not form_value:
-            if source == "form4":
+            if source == "form3":
+                form_value = "FORM 3"
+            elif source == "form4":
                 form_value = "FORM 4"
             elif source == "schedule13d":
                 form_value = "SCHEDULE 13D"
