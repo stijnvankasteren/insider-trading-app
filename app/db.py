@@ -50,6 +50,7 @@ def init_db() -> None:
     _ensure_sqlite_dir_exists(settings.database_url)
     Base.metadata.create_all(bind=engine)
     _migrate_trade_form_column()
+    _cleanup_empty_trades()
 
 
 def _migrate_trade_form_column() -> None:
@@ -93,6 +94,76 @@ def _migrate_trade_form_column() -> None:
                 WHERE transaction_type IS NOT NULL
                   AND form IS NOT NULL
                   AND {is_form_clause}
+                """
+            )
+        )
+
+
+def _cleanup_empty_trades() -> None:
+    inspector = inspect(engine)
+    if "trades" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("trades")}
+    required = {
+        "ticker",
+        "company_name",
+        "person_name",
+        "person_slug",
+        "transaction_type",
+        "form",
+        "transaction_date",
+        "filed_at",
+        "amount_usd_low",
+        "amount_usd_high",
+        "shares",
+        "price_usd",
+        "url",
+    }
+    if not required.issubset(columns):
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                SET
+                  ticker = NULLIF(TRIM(ticker), ''),
+                  company_name = NULLIF(TRIM(company_name), ''),
+                  person_name = NULLIF(TRIM(person_name), ''),
+                  person_slug = NULLIF(TRIM(person_slug), ''),
+                  transaction_type = NULLIF(TRIM(transaction_type), ''),
+                  form = NULLIF(TRIM(form), ''),
+                  url = NULLIF(TRIM(url), '')
+                WHERE
+                  ticker IS NOT NULL
+                  OR company_name IS NOT NULL
+                  OR person_name IS NOT NULL
+                  OR person_slug IS NOT NULL
+                  OR transaction_type IS NOT NULL
+                  OR form IS NOT NULL
+                  OR url IS NOT NULL
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                DELETE FROM trades
+                WHERE ticker IS NULL
+                  AND company_name IS NULL
+                  AND person_name IS NULL
+                  AND person_slug IS NULL
+                  AND transaction_type IS NULL
+                  AND form IS NULL
+                  AND transaction_date IS NULL
+                  AND filed_at IS NULL
+                  AND amount_usd_low IS NULL
+                  AND amount_usd_high IS NULL
+                  AND shares IS NULL
+                  AND price_usd IS NULL
+                  AND url IS NULL
                 """
             )
         )

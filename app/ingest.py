@@ -19,6 +19,44 @@ from app.settings import get_settings
 router = APIRouter(tags=["ingest"])
 
 
+def _clean_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        value = str(value)
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    return v or None
+
+
+def _has_trade_data(payload: dict[str, Any]) -> bool:
+    for key in (
+        "ticker",
+        "company_name",
+        "person_name",
+        "person_slug",
+        "transaction_type",
+        "form",
+        "transaction_date",
+        "filed_at",
+        "amount_usd_low",
+        "amount_usd_high",
+        "shares",
+        "price_usd",
+        "url",
+    ):
+        value = payload.get(key)
+        if isinstance(value, str):
+            if value.strip():
+                return True
+        elif value is not None:
+            return True
+    return False
+
+
 def _slugify(value: str) -> str:
     value = value.strip().lower()
     value = re.sub(r"[^a-z0-9]+", "-", value)
@@ -158,6 +196,7 @@ def ingest_trades(
 
     inserted = 0
     updated = 0
+    skipped_empty = 0
     errors: list[dict[str, Any]] = []
 
     for idx, raw in enumerate(items):
@@ -166,23 +205,14 @@ def ingest_trades(
             errors.append({"index": idx, "error": "Missing 'source'"})
             continue
 
-        ticker_value = raw.get("ticker") or raw.get("symbol") or None
-        if isinstance(ticker_value, str):
-            ticker_value = ticker_value.strip().upper()
-            if not ticker_value:
-                ticker_value = None
+        ticker_value = _clean_str(raw.get("ticker") or raw.get("symbol"))
+        if ticker_value:
+            ticker_value = ticker_value.upper()
 
-        person_name_value = raw.get("person_name") or raw.get("personName")
-        if isinstance(person_name_value, str):
-            person_name_value = person_name_value.strip()
-            if not person_name_value:
-                person_name_value = None
+        company_name_value = _clean_str(raw.get("company_name") or raw.get("companyName"))
+        person_name_value = _clean_str(raw.get("person_name") or raw.get("personName"))
 
-        tx_type_value = raw.get("transaction_type") or raw.get("type")
-        if isinstance(tx_type_value, str):
-            tx_type_value = tx_type_value.strip()
-            if not tx_type_value:
-                tx_type_value = None
+        tx_type_value = _clean_str(raw.get("transaction_type") or raw.get("type"))
 
         form_value = raw.get("form") or raw.get("issuerForm") or raw.get("reportingForm")
         if isinstance(form_value, bool):
@@ -211,6 +241,9 @@ def ingest_trades(
         amount_usd_high = _parse_int(raw.get("amount_usd_high") or raw.get("amountUsdHigh"))
         amount_usd = _parse_int(raw.get("amount_usd") or raw.get("amountUsd"))
 
+        url_value = _clean_str(raw.get("url"))
+        external_id_value = _clean_str(raw.get("external_id") or raw.get("externalId"))
+
         if source == "insider" and shares_value is not None and price_usd_value is not None:
             computed_amount = (price_usd_value * Decimal(shares_value)).to_integral_value(
                 rounding=ROUND_HALF_UP
@@ -238,9 +271,9 @@ def ingest_trades(
 
         payload: dict[str, Any] = {
             "source": source,
-            "external_id": raw.get("external_id") or raw.get("externalId"),
+            "external_id": external_id_value,
             "ticker": ticker_value,
-            "company_name": raw.get("company_name") or raw.get("companyName"),
+            "company_name": company_name_value,
             "person_name": person_name_value,
             "transaction_type": tx_type_value,
             "form": form_value,
@@ -252,7 +285,7 @@ def ingest_trades(
             "amount_usd_high": amount_usd_high,
             "shares": shares_value,
             "price_usd": price_usd_value,
-            "url": raw.get("url"),
+            "url": url_value,
             "raw": raw,
         }
 
@@ -261,6 +294,10 @@ def ingest_trades(
 
         if payload["person_name"] and not payload.get("person_slug"):
             payload["person_slug"] = _slugify(str(payload["person_name"]))
+
+        if not _has_trade_data(payload):
+            skipped_empty += 1
+            continue
 
         existing = db.scalar(select(Trade).where(Trade.external_id == payload["external_id"]))
         if existing:
@@ -309,7 +346,12 @@ def ingest_trades(
             inserted += 1
 
     db.commit()
-    return {"inserted": inserted, "updated": updated, "errors": errors[:50]}
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "skipped_empty": skipped_empty,
+        "errors": errors[:50],
+    }
 
 
 @router.delete("/trades")
