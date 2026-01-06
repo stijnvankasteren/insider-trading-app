@@ -19,9 +19,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.forms import FORM_LABELS, FORM_PREFIX_ORDER, form_prefix, normalize_form
 from app.market_data import MarketDataError, PricePoint, fetch_stooq_daily_prices
 from app.models import Subscriber, Trade, User, WatchlistItem
-from app.sources import SOURCE_LABELS, SOURCE_ORDER
 from app.settings import get_settings
 
 router = APIRouter()
@@ -109,8 +109,8 @@ def _base_context(request: Request) -> dict[str, Any]:
         "auth_disabled": settings.auth_disabled,
         "current_user": current_user,
         "csrf_token": csrf_token,
-        "source_labels": SOURCE_LABELS,
-        "source_order": SOURCE_ORDER,
+        "form_labels": FORM_LABELS,
+        "form_prefix_order": FORM_PREFIX_ORDER,
     }
 
 
@@ -534,17 +534,17 @@ def app_dashboard(
             "page_title": "Dashboard",
             "total_24h": int(total_24h or 0),
             "top_ticker": top_ticker_row[0] if top_ticker_row else None,
-            "latest_source": latest_trades[0].source if latest_trades else None,
+            "latest_form": latest_trades[0].form if latest_trades else None,
             "latest_trades": latest_trades,
         },
     )
 
 
-def _render_source_trades(
+def _render_form_trades(
     request: Request,
     db: Session,
     *,
-    source: str,
+    form_prefix_value: str,
     page_title: str,
     page_subtitle: str,
     template_name: str,
@@ -563,7 +563,7 @@ def _render_source_trades(
     date_from = _parse_iso_date(from_date)
     date_to = _parse_iso_date(to_date)
 
-    conditions = [Trade.source == source]
+    conditions = [func.lower(Trade.form).like(f"{form_prefix_value.lower()}%")]
     if ticker:
         conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
     if person:
@@ -626,7 +626,7 @@ def _render_source_trades(
     next_url = (
         _build_url(base_path, {**base_params, "page": page + 1}) if page < total_pages else None
     )
-    export_url = _build_url("/api/trades.csv", {**base_params, "source": source})
+    export_url = _build_url("/api/trades.csv", {**base_params, "form": form_prefix_value})
 
     start = offset + 1 if total > 0 else 0
     end = min(offset + len(trades), total)
@@ -666,10 +666,10 @@ def app_form3(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="form3",
+        form_prefix_value="FORM 3",
         page_title="Form 3",
         page_subtitle="Initial beneficial ownership statements (SEC Form 3).",
         template_name="app/form3.html",
@@ -697,10 +697,10 @@ def app_insiders(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="form4",
+        form_prefix_value="FORM 4",
         page_title="Form 4",
         page_subtitle="Insider trading transactions (SEC Form 4).",
         template_name="app/insiders.html",
@@ -728,10 +728,10 @@ def app_congress(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="congress",
+        form_prefix_value="CONGRESS",
         page_title="Congress",
         page_subtitle="Trades reported by members of congress.",
         template_name="app/congress.html",
@@ -759,10 +759,10 @@ def app_schedule13d(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="schedule13d",
+        form_prefix_value="SCHEDULE 13D",
         page_title="Schedule 13D",
         page_subtitle="Whale moves (SEC Schedule 13D filings; typically >5% ownership).",
         template_name="app/schedule13d.html",
@@ -790,10 +790,10 @@ def app_form13f(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="form13f",
+        form_prefix_value="FORM 13F",
         page_title="Form 13F",
         page_subtitle="Institutional holdings (portfolio updates from SEC Form 13F).",
         template_name="app/form13f.html",
@@ -821,10 +821,10 @@ def app_form8k(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="form8k",
+        form_prefix_value="FORM 8-K",
         page_title="Form 8-K",
         page_subtitle="Stock splits and other events surfaced from SEC Form 8-K filings.",
         template_name="app/form8k.html",
@@ -852,10 +852,10 @@ def app_form10k(
     page: int = 1,
     page_size: int = 50,
 ):
-    return _render_source_trades(
+    return _render_form_trades(
         request,
         db,
-        source="form10k",
+        form_prefix_value="FORM 10-K",
         page_title="Form 10-K",
         page_subtitle="Risk factor changes highlighted from SEC Form 10-K filings.",
         template_name="app/form10k.html",
@@ -1207,13 +1207,16 @@ def app_company(
         db.scalar(select(func.count()).select_from(Trade).where(Trade.ticker == ticker_norm))
         or 0
     )
-    by_source = dict(
-        db.execute(
-            select(Trade.source, func.count(Trade.id))
-            .where(Trade.ticker == ticker_norm)
-            .group_by(Trade.source)
-        ).all()
-    )
+    by_form_prefix: dict[str, int] = {}
+    for form_value, count in db.execute(
+        select(Trade.form, func.count(Trade.id))
+        .where(Trade.ticker == ticker_norm)
+        .where(Trade.form.is_not(None))
+        .group_by(Trade.form)
+    ).all():
+        prefix = form_prefix(form_value)
+        if prefix:
+            by_form_prefix[prefix] = by_form_prefix.get(prefix, 0) + int(count)
 
     trades = db.scalars(
         select(Trade)
@@ -1254,7 +1257,7 @@ def app_company(
             "ticker": ticker_norm,
             "company_name": company_name,
             "total": total,
-            "by_source": {k: int(v) for k, v in by_source.items()},
+            "by_form_prefix": by_form_prefix,
             "trades": trades,
             "prices_url": prices_url,
             "latest_price": latest_price,
@@ -1284,13 +1287,16 @@ def app_person(
         )
         or 0
     )
-    by_source = dict(
-        db.execute(
-            select(Trade.source, func.count(Trade.id))
-            .where(Trade.person_slug == slug_norm)
-            .group_by(Trade.source)
-        ).all()
-    )
+    by_form_prefix: dict[str, int] = {}
+    for form_value, count in db.execute(
+        select(Trade.form, func.count(Trade.id))
+        .where(Trade.person_slug == slug_norm)
+        .where(Trade.form.is_not(None))
+        .group_by(Trade.form)
+    ).all():
+        prefix = form_prefix(form_value)
+        if prefix:
+            by_form_prefix[prefix] = by_form_prefix.get(prefix, 0) + int(count)
 
     trades = db.scalars(
         select(Trade)
@@ -1320,7 +1326,7 @@ def app_person(
             "person_name": person_name,
             "slug": slug_norm,
             "total": total,
-            "by_source": {k: int(v) for k, v in by_source.items()},
+            "by_form_prefix": by_form_prefix,
             "trades": trades,
             "watchlisted": watchlisted,
         },

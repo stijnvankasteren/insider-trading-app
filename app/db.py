@@ -50,7 +50,8 @@ def init_db() -> None:
     _ensure_sqlite_dir_exists(settings.database_url)
     Base.metadata.create_all(bind=engine)
     _migrate_trade_form_column()
-    _migrate_trade_sources()
+    _migrate_trade_form_values()
+    _drop_trade_source_column()
     _cleanup_empty_trades()
 
 
@@ -69,11 +70,12 @@ def _migrate_trade_form_column() -> None:
             if "duplicate column" not in message and "already exists" not in message:
                 raise
 
-    is_form_clause = (
-        "transaction_type ILIKE 'FORM %'"
-        if engine.dialect.name == "postgresql"
-        else "upper(transaction_type) LIKE 'FORM %'"
-    )
+    if engine.dialect.name == "postgresql":
+        is_form_clause = "transaction_type ILIKE 'FORM %' OR transaction_type ILIKE 'SCHEDULE %'"
+    else:
+        is_form_clause = (
+            "upper(transaction_type) LIKE 'FORM %' OR upper(transaction_type) LIKE 'SCHEDULE %'"
+        )
 
     with engine.begin() as conn:
         conn.execute(
@@ -100,7 +102,86 @@ def _migrate_trade_form_column() -> None:
         )
 
 
-def _migrate_trade_sources() -> None:
+def _migrate_trade_form_values() -> None:
+    inspector = inspect(engine)
+    if "trades" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("trades")}
+    if "form" not in columns:
+        return
+
+    with engine.begin() as conn:
+        if "source" in columns:
+            conn.execute(
+                text(
+                    """
+                    UPDATE trades
+                    SET form = CASE lower(source)
+                      WHEN 'insider' THEN 'FORM 4'
+                      WHEN 'form3' THEN 'FORM 3'
+                      WHEN 'form4' THEN 'FORM 4'
+                      WHEN 'schedule13d' THEN 'SCHEDULE 13D'
+                      WHEN 'form13f' THEN 'FORM 13F'
+                      WHEN 'form8k' THEN 'FORM 8-K'
+                      WHEN 'form10k' THEN 'FORM 10-K'
+                      WHEN 'congress' THEN 'CONGRESS'
+                      ELSE form
+                    END
+                    WHERE form IS NULL
+                      AND source IS NOT NULL
+                    """
+                )
+            )
+
+        conn.execute(text("UPDATE trades SET form = UPPER(form) WHERE form IS NOT NULL"))
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                SET form = CASE
+                  WHEN form = '3' THEN 'FORM 3'
+                  WHEN form = '4' THEN 'FORM 4'
+                  WHEN form = '13D' THEN 'SCHEDULE 13D'
+                  WHEN form = '13F' THEN 'FORM 13F'
+                  WHEN form = '8K' THEN 'FORM 8-K'
+                  WHEN form = '10K' THEN 'FORM 10-K'
+                  ELSE form
+                END
+                WHERE form IS NOT NULL
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                SET form = REPLACE(form, 'FORM 8K', 'FORM 8-K')
+                WHERE form LIKE 'FORM 8K%'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                SET form = REPLACE(form, 'FORM 10K', 'FORM 10-K')
+                WHERE form LIKE 'FORM 10K%'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                SET form = REPLACE(form, 'FORM 13D', 'SCHEDULE 13D')
+                WHERE form LIKE 'FORM 13D%'
+                """
+            )
+        )
+
+
+def _drop_trade_source_column() -> None:
     inspector = inspect(engine)
     if "trades" not in inspector.get_table_names():
         return
@@ -109,16 +190,79 @@ def _migrate_trade_sources() -> None:
     if "source" not in columns:
         return
 
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                UPDATE trades
-                SET source = 'form4'
-                WHERE lower(source) = 'insider'
-                """
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE trades RENAME TO trades_old"))
+            index_names = [
+                row[0]
+                for row in conn.execute(
+                    text(
+                        """
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE type = 'index'
+                          AND tbl_name = 'trades_old'
+                        """
+                    )
+                ).all()
+            ]
+            for name in index_names:
+                if name.startswith("sqlite_autoindex"):
+                    continue
+                conn.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+
+            Base.metadata.create_all(bind=conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trades (
+                      id,
+                      external_id,
+                      ticker,
+                      company_name,
+                      person_name,
+                      person_slug,
+                      transaction_type,
+                      form,
+                      transaction_date,
+                      filed_at,
+                      amount_usd_low,
+                      amount_usd_high,
+                      shares,
+                      price_usd,
+                      url,
+                      raw,
+                      created_at
+                    )
+                    SELECT
+                      id,
+                      external_id,
+                      ticker,
+                      company_name,
+                      person_name,
+                      person_slug,
+                      transaction_type,
+                      form,
+                      transaction_date,
+                      filed_at,
+                      amount_usd_low,
+                      amount_usd_high,
+                      shares,
+                      price_usd,
+                      url,
+                      raw,
+                      created_at
+                    FROM trades_old
+                    """
+                )
             )
-        )
+            conn.execute(text("DROP TABLE trades_old"))
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP INDEX IF EXISTS ix_trades_source"))
+        conn.execute(text("DROP INDEX IF EXISTS ix_trades_source_date"))
+        conn.execute(text("ALTER TABLE trades DROP COLUMN IF EXISTS source"))
 
 
 def _cleanup_empty_trades() -> None:

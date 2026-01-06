@@ -11,9 +11,9 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.forms import form_prefix, normalize_form
 from app.ingest import router as ingest_router
 from app.models import Trade
-from app.sources import normalize_source
 from app.settings import get_settings
 
 router = APIRouter()
@@ -55,7 +55,7 @@ def _parse_iso_date(value: Optional[str]) -> Optional[dt.date]:
 def list_trades(
     _: None = Depends(_require_api_login),
     db: Session = Depends(get_db),
-    source: Optional[str] = None,
+    form: Optional[str] = None,
     ticker: Optional[str] = None,
     person: Optional[str] = None,
     tx_type: Optional[str] = Query(default=None, alias="type"),
@@ -71,15 +71,13 @@ def list_trades(
     date_to = _parse_iso_date(to_date)
 
     conditions = []
-    if source is not None:
-        source_norm = normalize_source(source)
-        if source_norm:
-            conditions.append(Trade.source == source_norm)
-        elif source.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid source: {source}",
-            )
+    if form:
+        normalized_form = normalize_form(form)
+        prefix = form_prefix(normalized_form)
+        if prefix:
+            conditions.append(func.lower(Trade.form).like(f"{prefix.lower()}%"))
+        elif normalized_form:
+            conditions.append(func.lower(Trade.form) == normalized_form.lower())
     if ticker:
         conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
     if person:
@@ -128,7 +126,6 @@ def list_trades(
 
     items = [
         {
-            "source": t.source,
             "external_id": t.external_id,
             "ticker": t.ticker,
             "company_name": t.company_name,
@@ -156,7 +153,7 @@ def list_trades(
 def export_trades_csv(
     _: None = Depends(_require_api_login),
     db: Session = Depends(get_db),
-    source: Optional[str] = None,
+    form: Optional[str] = None,
     ticker: Optional[str] = None,
     person: Optional[str] = None,
     tx_type: Optional[str] = Query(default=None, alias="type"),
@@ -169,15 +166,13 @@ def export_trades_csv(
     date_to = _parse_iso_date(to_date)
 
     conditions = []
-    if source is not None:
-        source_norm = normalize_source(source)
-        if source_norm:
-            conditions.append(Trade.source == source_norm)
-        elif source.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid source: {source}",
-            )
+    if form:
+        normalized_form = normalize_form(form)
+        prefix = form_prefix(normalized_form)
+        if prefix:
+            conditions.append(func.lower(Trade.form).like(f"{prefix.lower()}%"))
+        elif normalized_form:
+            conditions.append(func.lower(Trade.form) == normalized_form.lower())
     if ticker:
         conditions.append(func.lower(Trade.ticker).like(f"%{ticker.lower()}%"))
     if person:
@@ -221,7 +216,6 @@ def export_trades_csv(
     writer = csv.writer(out)
     writer.writerow(
         [
-            "source",
             "ticker",
             "company_name",
             "person_name",
@@ -240,7 +234,6 @@ def export_trades_csv(
     for t in trades:
         writer.writerow(
             [
-                t.source,
                 t.ticker or "",
                 t.company_name or "",
                 t.person_name or "",

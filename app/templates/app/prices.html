@@ -48,7 +48,7 @@
             <div class="text-lg font-semibold tracking-tight">{{ ticker }}</div>
             <div class="mt-1 text-xs text-slate-500">
               {% if resolved_symbol %}
-                Source symbol: <span class="text-slate-300">{{ resolved_symbol }}</span> ·
+                Resolved symbol: <span class="text-slate-300">{{ resolved_symbol }}</span> ·
               {% endif %}
               {{ stats.first_date }} → {{ stats.last_date }}
             </div>
@@ -129,4 +129,3 @@
     </div>
   {% endif %}
 {% endblock %}
-

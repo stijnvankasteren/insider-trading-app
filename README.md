@@ -8,7 +8,7 @@ Requirements: Python 3.9+.
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+. .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 mkdir -p data
@@ -62,16 +62,14 @@ Headers:
 
 Body:
 - Single object or array of objects.
-- Required: `form` (recommended) or `source`
-  - If `form` is present, `source` is inferred automatically (Form 3/4/13F/8-K/10-K/Schedule 13D)
-  - For congress trades, set `source=congress`
+- Required: `form` (e.g. `4`, `13D`, `8-K`, `10-K`, `13F`, `CONGRESS`)
 - Recommended: `external_id` (or `externalId`) for idempotency/upserts.
 - Optional fields (with common aliases):
   - `ticker` (or `symbol`), `company_name` (or `companyName`), `person_name` (or `personName`)
   - `transaction_type` (or `type`), `form` (or `issuerForm` / `reportingForm`)
   - `transaction_date` (or `transactionDate`, `YYYY-MM-DD`), `filed_at` (or `filedAt`, ISO datetime)
   - Amount (USD):
-    - Form 3/4 (`form=3|4`, or `source=form3|form4`): calculated as `shares * price_usd` (overrides any amount fields)
+    - Form 3/4 (`form=3|4`): calculated as `shares * price_usd` (overrides any amount fields)
     - Range (e.g. congress trades): `amount_usd_low` (or `amountUsdLow`) + `amount_usd_high` (or `amountUsdHigh`)
   - `shares`, `price_usd` (or `priceUsd`)
   - `url`
@@ -102,8 +100,8 @@ Safety: add `?confirm=true` or the request will be rejected.
 curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?confirm=true" \
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
 
-# Only delete a single source ("form3" / "form4" / "schedule13d" / "form13f" / "form8k" / "form10k" / "congress")
-curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?source=form4&confirm=true" \
+# Only delete a single form ("3" / "4" / "13D" / "13F" / "8-K" / "10-K" / "CONGRESS")
+curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?form=4&confirm=true" \
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
 ```
 

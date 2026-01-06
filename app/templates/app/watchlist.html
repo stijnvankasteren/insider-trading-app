@@ -90,7 +90,6 @@
           <thead class="bg-slate-900/30 text-xs uppercase tracking-wide text-slate-400">
             <tr>
               <th class="px-4 py-3">Traded</th>
-              <th class="px-4 py-3">Source</th>
               <th class="px-4 py-3">Ticker</th>
               <th class="px-4 py-3">Person</th>
               <th class="px-4 py-3">Type</th>
@@ -103,9 +102,6 @@
               <tr class="hover:bg-slate-900/20">
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
                   {{ t.transaction_date or "—" }}
-                </td>
-                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
-                  {{ source_labels.get(t.source, t.source) }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap font-medium">
                   {% if t.ticker %}

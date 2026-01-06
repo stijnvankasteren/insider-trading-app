@@ -9,12 +9,12 @@ from typing import Any
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.forms import form_prefix, normalize_form
 from app.models import Trade
-from app.sources import infer_source_from_form, normalize_source
 from app.settings import get_settings
 
 router = APIRouter(tags=["ingest"])
@@ -142,7 +142,6 @@ def _parse_decimal(value: object) -> Optional[Decimal]:
 
 def _make_external_id(payload: dict[str, Any]) -> str:
     stable = {
-        "source": payload.get("source"),
         "ticker": payload.get("ticker"),
         "company_name": payload.get("company_name"),
         "person_name": payload.get("person_name"),
@@ -210,52 +209,18 @@ def ingest_trades(
 
         tx_type_value = _clean_str(raw.get("transaction_type") or raw.get("type"))
 
-        raw_source = raw.get("source")
-        explicit_source = normalize_source(raw_source) if raw_source is not None else None
-
-        form_value = raw.get("form") or raw.get("issuerForm") or raw.get("reportingForm")
-        if isinstance(form_value, bool):
-            form_value = None
-        elif isinstance(form_value, (int, float)):
-            form_value = str(int(form_value))
-        if isinstance(form_value, str):
-            form_value = form_value.strip()
-            if not form_value:
-                form_value = None
-            elif not re.match(r"^(form|schedule)\\b", form_value, flags=re.IGNORECASE):
-                form_value = f"FORM {form_value}"
-
-        if (
-            not form_value
-            and isinstance(tx_type_value, str)
-            and re.match(r"^(form|schedule)\\b", tx_type_value, flags=re.IGNORECASE)
-        ):
-            form_value = tx_type_value
-            tx_type_value = None
-
+        form_value = normalize_form(
+            raw.get("form") or raw.get("issuerForm") or raw.get("reportingForm")
+        )
         if not form_value and tx_type_value:
-            inferred_from_type = infer_source_from_form(tx_type_value)
-            if inferred_from_type:
-                form_value = tx_type_value
+            maybe_form = normalize_form(tx_type_value)
+            if form_prefix(maybe_form):
+                form_value = maybe_form
                 tx_type_value = None
 
-        inferred_source = infer_source_from_form(form_value) if form_value else None
-        source = explicit_source or inferred_source
-        if not source:
-            if raw_source is None or (isinstance(raw_source, str) and not raw_source.strip()):
-                errors.append(
-                    {
-                        "index": idx,
-                        "error": "Missing 'source' (or provide a recognizable 'form')",
-                    }
-                )
-            else:
-                errors.append(
-                    {
-                        "index": idx,
-                        "error": f"Invalid 'source': {raw_source!r} (or provide a recognizable 'form')",
-                    }
-                )
+        prefix = form_prefix(form_value)
+        if not prefix:
+            errors.append({"index": idx, "error": "Missing or invalid 'form'"})
             continue
 
         shares_value = _parse_int(raw.get("shares"))
@@ -268,7 +233,7 @@ def ingest_trades(
         url_value = _clean_str(raw.get("url"))
         external_id_value = _clean_str(raw.get("external_id") or raw.get("externalId"))
 
-        if source in ("form3", "form4") and shares_value is not None and price_usd_value is not None:
+        if prefix in ("FORM 3", "FORM 4") and shares_value is not None and price_usd_value is not None:
             computed_amount = (price_usd_value * Decimal(shares_value)).to_integral_value(
                 rounding=ROUND_HALF_UP
             )
@@ -278,37 +243,22 @@ def ingest_trades(
             if amount_usd_low is None and amount_usd_high is None and amount_usd is not None:
                 amount_usd_low = amount_usd
                 amount_usd_high = amount_usd
-            if source in ("form3", "form4"):
+            if prefix in ("FORM 3", "FORM 4"):
                 if amount_usd_low is None and amount_usd_high is not None:
                     amount_usd_low = amount_usd_high
                 elif amount_usd_high is None and amount_usd_low is not None:
                     amount_usd_high = amount_usd_low
-            elif source == "congress":
+            elif prefix == "CONGRESS":
                 if amount_usd_low is None or amount_usd_high is None:
                     errors.append(
                         {
                             "index": idx,
-                            "error": "For source=congress, provide amount_usd_low and amount_usd_high",
+                            "error": "For form=CONGRESS, provide amount_usd_low and amount_usd_high",
                         }
                     )
                     continue
 
-        if not form_value:
-            if source == "form3":
-                form_value = "FORM 3"
-            elif source == "form4":
-                form_value = "FORM 4"
-            elif source == "schedule13d":
-                form_value = "SCHEDULE 13D"
-            elif source == "form13f":
-                form_value = "FORM 13F"
-            elif source == "form8k":
-                form_value = "FORM 8-K"
-            elif source == "form10k":
-                form_value = "FORM 10-K"
-
         payload: dict[str, Any] = {
-            "source": source,
             "external_id": external_id_value,
             "ticker": ticker_value,
             "company_name": company_name_value,
@@ -340,7 +290,6 @@ def ingest_trades(
         existing = db.scalar(select(Trade).where(Trade.external_id == payload["external_id"]))
         if existing:
             for key in (
-                "source",
                 "ticker",
                 "company_name",
                 "person_name",
@@ -363,7 +312,6 @@ def ingest_trades(
         else:
             db.add(
                 Trade(
-                    source=payload["source"],
                     external_id=payload["external_id"],
                     ticker=payload.get("ticker"),
                     company_name=payload.get("company_name"),
@@ -395,7 +343,7 @@ def ingest_trades(
 @router.delete("/trades")
 def delete_trades(
     confirm: bool = Query(default=False),
-    source: Optional[str] = Query(default=None),
+    form: Optional[str] = Query(default=None),
     _: None = Depends(_require_ingest_secret),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -405,21 +353,20 @@ def delete_trades(
             detail="Add ?confirm=true to delete trades",
         )
 
-    source_value: Optional[str] = None
+    form_value: Optional[str] = None
     stmt = delete(Trade)
-    if source is not None:
-        if not source.strip():
-            source_value = None
-        else:
-            normalized = normalize_source(source)
-            if not normalized:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid source: {source}",
-                )
-            source_value = normalized
-            stmt = stmt.where(Trade.source == normalized)
+    if form is not None:
+        normalized_form = normalize_form(form)
+        prefix = form_prefix(normalized_form)
+        if form.strip() and not prefix:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid form: {form}",
+            )
+        if prefix:
+            form_value = prefix
+            stmt = stmt.where(func.lower(Trade.form).like(f"{prefix.lower()}%"))
 
     result = db.execute(stmt)
     db.commit()
-    return {"deleted": int(result.rowcount or 0), "source": source_value}
+    return {"deleted": int(result.rowcount or 0), "form": form_value}
