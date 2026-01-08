@@ -135,6 +135,26 @@ Tip: the SEC company_tickers.json list can be larger than the default `INGEST_MA
 
 The UI pages `/app/3`, `/app/insiders`, `/app/13d`, `/app/13f`, `/app/8k`, `/app/10k`, `/app/congress`, `/app/search`, `/app/watchlist` will read from the database.
 
+### LLM trade scoring (daily)
+
+The app can score trades once per day using an OpenRouter-compatible LLM (default model: `xiaomi/mimo-v2-flash:free`). Scores are stored on each trade and shown in the UI when available.
+
+Required env vars:
+- `LLM_API_KEY`
+- `LLM_MODEL` (default `xiaomi/mimo-v2-flash:free`)
+- `LLM_BASE_URL` (default `https://openrouter.ai/api/v1`)
+
+Scheduling / limits:
+- `LLM_SCORE_DAILY_HOUR` + `LLM_SCORE_DAILY_MINUTE` (server local time)
+- `LLM_SCORE_STALE_HOURS` (rescore when older than this)
+- `LLM_SCORE_MAX_PER_RUN` (0 = no limit)
+- `LLM_SCORE_TIMEOUT_SECONDS`
+- `LLM_SCORE_SLEEP_MS` (delay between requests)
+
+Notes:
+- Scoring runs in-process once per day; if you run multiple workers, each worker will run the job.
+- The model only receives the trade data stored in the DB (no external fundamentals unless you add them).
+
 ## Deploy (Linux server)
 
 Recommended:

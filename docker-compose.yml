@@ -27,6 +27,16 @@ services:
       - APP_PASSWORD
       - SESSION_SECRET
       - COOKIE_SECURE
+      - LLM_API_KEY
+      - LLM_BASE_URL
+      - LLM_MODEL
+      - LLM_SCORE_ENABLED
+      - LLM_SCORE_DAILY_HOUR
+      - LLM_SCORE_DAILY_MINUTE
+      - LLM_SCORE_STALE_HOURS
+      - LLM_SCORE_MAX_PER_RUN
+      - LLM_SCORE_TIMEOUT_SECONDS
+      - LLM_SCORE_SLEEP_MS
     ports:
       - "${WEB_PORT_MAPPING:-8000:8000}"
     depends_on:

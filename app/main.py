@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import router as api_router
 from app.db import init_db
+from app.llm_scoring import start_llm_scoring
 from app.security import RateLimitExceeded, rate_limit_dependency
 from app.settings import get_settings
 from app.web import router as web_router
@@ -20,6 +21,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         init_db()
+        start_llm_scoring()
         yield
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)

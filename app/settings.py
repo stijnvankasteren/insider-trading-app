@@ -82,6 +82,16 @@ class Settings:
     ingest_reject_extra_fields: bool
     ingest_max_items: int
     ingest_max_raw_bytes: int
+    llm_api_key: str
+    llm_base_url: str
+    llm_model: str
+    llm_score_enabled: bool
+    llm_score_daily_hour: int
+    llm_score_daily_minute: int
+    llm_score_stale_hours: int
+    llm_score_max_per_run: int
+    llm_score_timeout_seconds: int
+    llm_score_sleep_ms: int
 
 
 @lru_cache
@@ -99,6 +109,11 @@ def get_settings() -> Settings:
     seen: set[str] = set()
     ingest_secrets = [s for s in ingest_secrets if not (s in seen or seen.add(s))]
     ingest_secret = ingest_secrets[0] if ingest_secrets else ""
+
+    llm_api_key = os.environ.get("LLM_API_KEY", "").strip()
+    llm_base_url = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").strip()
+    llm_model = os.environ.get("LLM_MODEL", "xiaomi/mimo-v2-flash:free").strip()
+    llm_score_enabled = _env_bool("LLM_SCORE_ENABLED", bool(llm_api_key))
 
     return Settings(
         app_name=os.environ.get("APP_NAME", "AltData"),
@@ -137,4 +152,18 @@ def get_settings() -> Settings:
         ingest_max_raw_bytes=_env_int(
             "INGEST_MAX_RAW_BYTES", 50_000, min_value=1_000, max_value=5_000_000
         ),
+        llm_api_key=llm_api_key,
+        llm_base_url=llm_base_url or "https://openrouter.ai/api/v1",
+        llm_model=llm_model or "xiaomi/mimo-v2-flash:free",
+        llm_score_enabled=llm_score_enabled,
+        llm_score_daily_hour=_env_int("LLM_SCORE_DAILY_HOUR", 3, min_value=0, max_value=23),
+        llm_score_daily_minute=_env_int(
+            "LLM_SCORE_DAILY_MINUTE", 0, min_value=0, max_value=59
+        ),
+        llm_score_stale_hours=_env_int("LLM_SCORE_STALE_HOURS", 24, min_value=1, max_value=168),
+        llm_score_max_per_run=_env_int("LLM_SCORE_MAX_PER_RUN", 0, min_value=0, max_value=100_000),
+        llm_score_timeout_seconds=_env_int(
+            "LLM_SCORE_TIMEOUT_SECONDS", 30, min_value=5, max_value=300
+        ),
+        llm_score_sleep_ms=_env_int("LLM_SCORE_SLEEP_MS", 0, min_value=0, max_value=10_000),
     )

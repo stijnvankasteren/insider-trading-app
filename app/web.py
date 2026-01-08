@@ -70,7 +70,7 @@ def _trade_amount_usd(trade: Trade) -> Optional[float]:
     return None
 
 
-def _score_trade(trade: Trade) -> int:
+def _score_trade_heuristic(trade: Trade) -> int:
     score = 50
 
     prefix = form_prefix(trade.form)
@@ -122,6 +122,19 @@ def _score_trade(trade: Trade) -> int:
                 score -= 10
 
     return max(0, min(100, int(score)))
+
+
+def _display_trade_score(trade: Trade) -> Optional[int]:
+    if trade.score is not None:
+        try:
+            return int(trade.score)
+        except (TypeError, ValueError):
+            return None
+
+    settings = get_settings()
+    if not settings.llm_score_enabled:
+        return _score_trade_heuristic(trade)
+    return None
 
 
 def _safe_next_path(value: Optional[str], *, default: str = "/app") -> str:
@@ -216,7 +229,7 @@ def _base_context(request: Request) -> dict[str, Any]:
         "form_labels": FORM_LABELS,
         "form_prefix_order": FORM_PREFIX_ORDER,
         "tx_label": _display_tx_type,
-        "score_trade": _score_trade,
+        "score_trade": _display_trade_score,
     }
 
 

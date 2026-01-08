@@ -130,9 +130,13 @@
 	              </td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
 	                {% set score = score_trade(t) %}
-	                <span class="text-xs font-medium {{ 'text-emerald-300' if score >= 70 else 'text-amber-300' if score >= 50 else 'text-rose-300' }}">
-	                  {{ score }}
-	                </span>
+	                {% if score is not none %}
+	                  <span class="text-xs font-medium {{ 'text-emerald-300' if score >= 70 else 'text-amber-300' if score >= 50 else 'text-rose-300' }}">
+	                    {{ score }}
+	                  </span>
+	                {% else %}
+	                  —
+	                {% endif %}
 	              </td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
 	                {% if t.price_change_pct %}

@@ -51,6 +51,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_trade_form_column()
     _migrate_trade_form_values()
+    _migrate_trade_score_columns()
     _drop_trade_source_column()
     _cleanup_empty_trades()
 
@@ -179,6 +180,44 @@ def _migrate_trade_form_values() -> None:
                 """
             )
         )
+
+
+def _migrate_trade_score_columns() -> None:
+    inspector = inspect(engine)
+    if "trades" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("trades")}
+    with engine.begin() as conn:
+        if "score" not in columns:
+            try:
+                conn.execute(text("ALTER TABLE trades ADD COLUMN score INTEGER"))
+            except (OperationalError, ProgrammingError) as exc:
+                message = str(exc).lower()
+                if "duplicate column" not in message and "already exists" not in message:
+                    raise
+        if "score_model" not in columns:
+            try:
+                conn.execute(text("ALTER TABLE trades ADD COLUMN score_model VARCHAR(64)"))
+            except (OperationalError, ProgrammingError) as exc:
+                message = str(exc).lower()
+                if "duplicate column" not in message and "already exists" not in message:
+                    raise
+        if "score_explanation" not in columns:
+            try:
+                conn.execute(text("ALTER TABLE trades ADD COLUMN score_explanation TEXT"))
+            except (OperationalError, ProgrammingError) as exc:
+                message = str(exc).lower()
+                if "duplicate column" not in message and "already exists" not in message:
+                    raise
+        if "score_updated_at" not in columns:
+            col_type = "TIMESTAMPTZ" if engine.dialect.name == "postgresql" else "DATETIME"
+            try:
+                conn.execute(text(f"ALTER TABLE trades ADD COLUMN score_updated_at {col_type}"))
+            except (OperationalError, ProgrammingError) as exc:
+                message = str(exc).lower()
+                if "duplicate column" not in message and "already exists" not in message:
+                    raise
 
 
 def _drop_trade_source_column() -> None:

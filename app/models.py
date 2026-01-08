@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from typing import Optional
 
-from sqlalchemy import Date, DateTime, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -73,6 +73,11 @@ class Trade(Base):
     price_usd: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 4))
 
     url: Mapped[Optional[str]] = mapped_column(String(1024))
+
+    score: Mapped[Optional[int]] = mapped_column(Integer)
+    score_model: Mapped[Optional[str]] = mapped_column(String(64))
+    score_explanation: Mapped[Optional[str]] = mapped_column(Text)
+    score_updated_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True))
 
     raw: Mapped[Optional[dict[str, Any]]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql")
