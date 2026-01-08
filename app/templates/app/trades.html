@@ -78,13 +78,13 @@
         <thead class="bg-slate-900/30 text-xs uppercase tracking-wide text-slate-400">
           <tr>
             <th class="px-4 py-3">Traded</th>
+            <th class="px-4 py-3">Filed</th>
             <th class="px-4 py-3">Ticker</th>
             <th class="px-4 py-3">Person</th>
             <th class="px-4 py-3">Type</th>
             <th class="px-4 py-3">Form</th>
             <th class="px-4 py-3">Amount</th>
             <th class="px-4 py-3">Δ%</th>
-            <th class="px-4 py-3">Filed</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-900/60">
@@ -92,6 +92,9 @@
             <tr class="hover:bg-slate-900/20">
               <td class="px-4 py-3 whitespace-nowrap text-slate-300">
                 {{ t.transaction_date or "—" }}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {{ t.filed_at.date() if t.filed_at else "—" }}
               </td>
               <td class="px-4 py-3 whitespace-nowrap font-medium">
                 {% if t.ticker %}
@@ -133,9 +136,6 @@
 	                  —
 	                {% endif %}
 	              </td>
-	              <td class="px-4 py-3 whitespace-nowrap text-slate-400">
-                {{ t.filed_at or "—" }}
-              </td>
             </tr>
           {% endfor %}
           {% if trades|length == 0 %}
