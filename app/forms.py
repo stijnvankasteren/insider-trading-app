@@ -45,20 +45,20 @@ def normalize_form(value: object) -> Optional[str]:
         return "CONGRESS"
 
     amendment = ""
-    if re.search(r"(?:^|\\b)(?:amend(?:ment)?|a)\\b", t) or "/a" in t or "-a" in t:
+    if re.search(r"(?:^|\b)(?:amend(?:ment)?|a)\b", t) or "/a" in t or "-a" in t:
         amendment = "/A"
 
-    if re.search(r"(?:^|\\b)13\\s*d\\b", t):
+    if re.search(r"(?:^|\b)13\s*d\b", t):
         return f"SCHEDULE 13D{amendment}"
-    if re.search(r"(?:^|\\b)13\\s*f\\b", t):
+    if re.search(r"(?:^|\b)13\s*f\b", t):
         return f"FORM 13F{amendment}"
-    if re.search(r"(?:^|\\b)8\\s*-?\\s*k\\b", t):
+    if re.search(r"(?:^|\b)8\s*-?\s*k\b", t):
         return f"FORM 8-K{amendment}"
-    if re.search(r"(?:^|\\b)10\\s*-?\\s*k\\b", t):
+    if re.search(r"(?:^|\b)10\s*-?\s*k\b", t):
         return f"FORM 10-K{amendment}"
-    if re.search(r"(?:^|\\b)3\\b", t):
+    if re.search(r"(?:^|\b)3\b", t):
         return f"FORM 3{amendment}"
-    if re.search(r"(?:^|\\b)4\\b", t):
+    if re.search(r"(?:^|\b)4\b", t):
         return f"FORM 4{amendment}"
 
     if t.startswith("form ") or t.startswith("schedule "):
