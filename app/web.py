@@ -1011,6 +1011,102 @@ def app_search(
     )
 
 
+@router.get("/app/people", response_class=HTMLResponse)
+def app_people(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_require_login),
+    q: Optional[str] = Query(default=None, max_length=80),
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=50, ge=10, le=200),
+):
+    query = (q or "").strip()
+    page_size = max(10, min(int(page_size or 50), 200))
+    page = max(int(page or 1), 1)
+
+    conditions = [Trade.person_slug.is_not(None)]
+    if query:
+        like = sql_like_contains(query.lower())
+        conditions.append(
+            or_(
+                func.lower(Trade.person_name).like(like, escape="\\"),
+                func.lower(Trade.person_slug).like(like, escape="\\"),
+            )
+        )
+
+    where_clause = and_(*conditions)
+
+    total = int(
+        db.scalar(select(func.count(func.distinct(Trade.person_slug))).where(where_clause))
+        or 0
+    )
+    total_pages = max(1, math.ceil(total / page_size)) if total else 1
+    page = min(page, total_pages)
+
+    offset = (page - 1) * page_size
+    people = db.execute(
+        select(
+            Trade.person_slug,
+            func.max(Trade.person_name),
+            func.count(Trade.id),
+        )
+        .where(where_clause)
+        .group_by(Trade.person_slug)
+        .order_by(func.lower(func.max(Trade.person_name)))
+        .limit(page_size)
+        .offset(offset)
+    ).all()
+
+    people_results = [
+        {"slug": row[0], "name": row[1] or row[0], "count": int(row[2])}
+        for row in people
+        if row[0]
+    ]
+
+    watchlist_people = {
+        r[0]
+        for r in db.execute(
+            select(WatchlistItem.value).where(
+                WatchlistItem.user_id == user_id, WatchlistItem.kind == "person"
+            )
+        ).all()
+    }
+
+    base_params = {"q": query, "page_size": page_size}
+    prev_url = (
+        _build_url("/app/people", {**base_params, "page": page - 1}) if page > 1 else None
+    )
+    next_url = (
+        _build_url("/app/people", {**base_params, "page": page + 1})
+        if page < total_pages
+        else None
+    )
+
+    start = offset + 1 if total > 0 else 0
+    end = min(offset + len(people_results), total)
+
+    return _render(
+        request,
+        "app/people.html",
+        {
+            "page_title": "People",
+            "page_subtitle": "Browse people in your database.",
+            "query": query,
+            "people_results": people_results,
+            "watchlist_people": watchlist_people,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "prev_url": prev_url,
+            "next_url": next_url,
+            "reset_url": "/app/people",
+            "showing_start": start,
+            "showing_end": end,
+        },
+    )
+
+
 @router.get("/app/prices", response_class=HTMLResponse)
 def app_prices(
     request: Request,

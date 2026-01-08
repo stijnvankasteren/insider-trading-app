@@ -22,6 +22,12 @@
         Search
       </a>
       <a
+        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/people') else 'text-slate-300 hover:text-white' }}"
+        href="/app/people"
+      >
+        People
+      </a>
+      <a
         class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/prices') else 'text-slate-300 hover:text-white' }}"
         href="/app/prices"
       >

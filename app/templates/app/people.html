@@ -1,0 +1,97 @@
+{% extends "app/_layout.html" %}
+{% block app_content %}
+  <form method="get" class="rounded-xl border border-slate-800 bg-slate-900/20 p-4">
+    <label class="text-xs text-slate-400">Search by name</label>
+    <div class="mt-1 flex flex-wrap gap-2">
+      <input
+        class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 md:w-96"
+        type="text"
+        name="q"
+        value="{{ query }}"
+        placeholder="Jane Doe"
+      />
+      <button
+        class="rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
+        type="submit"
+      >
+        Search
+      </button>
+      <a class="px-2 py-2 text-sm text-slate-300 hover:text-white" href="{{ reset_url }}">
+        Reset
+      </a>
+    </div>
+    <div class="mt-3 text-xs text-slate-500">
+      {% if total > 0 %}
+        Showing {{ showing_start }}-{{ showing_end }} of {{ total }}
+      {% else %}
+        No results
+      {% endif %}
+    </div>
+  </form>
+
+  {% set return_url = request.url.path %}
+  {% if request.url.query %}
+    {% set return_url = return_url ~ '?' ~ request.url.query %}
+  {% endif %}
+
+  <div class="mt-6 overflow-hidden rounded-xl border border-slate-800">
+    <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+      People
+    </div>
+    <div class="bg-slate-950">
+      {% if people_results|length == 0 %}
+        <div class="px-4 py-6 text-sm text-slate-400">No people found.</div>
+      {% else %}
+        <ul class="divide-y divide-slate-900/60">
+          {% for row in people_results %}
+            <li class="flex items-center justify-between gap-3 px-4 py-3">
+              <div>
+                <a class="font-medium hover:underline" href="/app/people/{{ row.slug }}">
+                  {{ row.name }}
+                </a>
+                <div class="text-xs text-slate-500">{{ row.count }} trades</div>
+              </div>
+              <div class="flex items-center gap-3">
+                {% if row.slug in watchlist_people %}
+                  <span class="rounded-md border border-slate-800 px-2 py-1 text-xs text-slate-400">
+                    In watchlist
+                  </span>
+                {% else %}
+                  <form method="post" action="/app/watchlist/add">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                    <input type="hidden" name="kind" value="person" />
+                    <input type="hidden" name="value" value="{{ row.slug }}" />
+                    <input type="hidden" name="label" value="{{ row.name }}" />
+                    <input type="hidden" name="next" value="{{ return_url }}" />
+                    <button
+                      class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+                      type="submit"
+                    >
+                      Add
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="mt-4 flex items-center justify-between">
+    {% if prev_url %}
+      <a class="text-sm text-slate-300 hover:text-white" href="{{ prev_url }}">&lt;- Prev</a>
+    {% else %}
+      <span class="text-sm text-slate-600">&lt;- Prev</span>
+    {% endif %}
+
+    <div class="text-xs text-slate-500">Page {{ page }} / {{ total_pages }}</div>
+
+    {% if next_url %}
+      <a class="text-sm text-slate-300 hover:text-white" href="{{ next_url }}">Next -&gt;</a>
+    {% else %}
+      <span class="text-sm text-slate-600">Next -&gt;</span>
+    {% endif %}
+  </div>
+{% endblock %}
