@@ -1,92 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-  {% set path = request.url.path %}
-  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+  <div class="flex flex-col gap-2">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">{{ page_title }}</h1>
       {% if page_subtitle %}
         <p class="mt-1 text-sm text-slate-400">{{ page_subtitle }}</p>
       {% endif %}
-    </div>
-    <div class="flex flex-wrap gap-2 text-sm">
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path == '/app' else 'text-slate-300 hover:text-white' }}"
-        href="/app"
-      >
-        Dashboard
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/search') else 'text-slate-300 hover:text-white' }}"
-        href="/app/search"
-      >
-        Search
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/people') else 'text-slate-300 hover:text-white' }}"
-        href="/app/people"
-      >
-        People
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/prices') else 'text-slate-300 hover:text-white' }}"
-        href="/app/prices"
-      >
-        Prices
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/3') else 'text-slate-300 hover:text-white' }}"
-        href="/app/3"
-      >
-        Form 3
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/insiders') else 'text-slate-300 hover:text-white' }}"
-        href="/app/insiders"
-      >
-        Form 4
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/13d') else 'text-slate-300 hover:text-white' }}"
-        href="/app/13d"
-      >
-        13D
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/13f') else 'text-slate-300 hover:text-white' }}"
-        href="/app/13f"
-      >
-        13F
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/8k') else 'text-slate-300 hover:text-white' }}"
-        href="/app/8k"
-      >
-        8-K
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/10k') else 'text-slate-300 hover:text-white' }}"
-        href="/app/10k"
-      >
-        10-K
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/congress') else 'text-slate-300 hover:text-white' }}"
-        href="/app/congress"
-      >
-        Congress
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/watchlist') else 'text-slate-300 hover:text-white' }}"
-        href="/app/watchlist"
-      >
-        Watchlist
-      </a>
-      <a
-        class="rounded-md border border-slate-800 px-3 py-1.5 {{ 'bg-slate-900/50 text-white' if path.startswith('/app/settings') else 'text-slate-300 hover:text-white' }}"
-        href="/app/settings"
-      >
-        Settings
-      </a>
     </div>
   </div>
   <div class="mt-8">
