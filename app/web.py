@@ -53,6 +53,77 @@ def _display_tx_type(form: Optional[str], tx_type: Optional[str]) -> str:
     return tx_value or "—"
 
 
+def _trade_amount_usd(trade: Trade) -> Optional[float]:
+    low = trade.amount_usd_low
+    high = trade.amount_usd_high
+    if low is not None or high is not None:
+        if low is not None and high is not None:
+            if low == high:
+                return float(low)
+            return float((low + high) / 2)
+        return float(low if low is not None else high)
+    if trade.shares is not None and trade.price_usd is not None:
+        try:
+            return float(trade.shares) * float(trade.price_usd)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _score_trade(trade: Trade) -> int:
+    score = 50
+
+    prefix = form_prefix(trade.form)
+    if prefix == "FORM 4":
+        score += 15
+    elif prefix == "CONGRESS":
+        score += 10
+    elif prefix == "FORM 3":
+        score += 5
+
+    tx_label = _display_tx_type(trade.form, trade.transaction_type).upper()
+    if tx_label == "BUY":
+        score += 20
+    elif tx_label == "SELL":
+        score -= 20
+
+    amount = _trade_amount_usd(trade)
+    if amount is not None and amount > 0:
+        if amount >= 2_000_000:
+            score += 25
+        elif amount >= 500_000:
+            score += 20
+        elif amount >= 100_000:
+            score += 15
+        elif amount >= 25_000:
+            score += 10
+        elif amount >= 5_000:
+            score += 5
+        else:
+            score += 2
+
+    trade_date = trade.transaction_date
+    if trade_date is None and trade.filed_at is not None:
+        trade_date = trade.filed_at.date()
+    if trade_date is not None:
+        days_ago = (dt.date.today() - trade_date).days
+        if days_ago >= 0:
+            if days_ago <= 7:
+                score += 10
+            elif days_ago <= 30:
+                score += 6
+            elif days_ago <= 90:
+                score += 3
+            elif days_ago <= 180:
+                score += 0
+            elif days_ago <= 365:
+                score -= 5
+            else:
+                score -= 10
+
+    return max(0, min(100, int(score)))
+
+
 def _safe_next_path(value: Optional[str], *, default: str = "/app") -> str:
     """
     Prevent open redirects by only allowing local absolute paths ("/...").
@@ -145,6 +216,7 @@ def _base_context(request: Request) -> dict[str, Any]:
         "form_labels": FORM_LABELS,
         "form_prefix_order": FORM_PREFIX_ORDER,
         "tx_label": _display_tx_type,
+        "score_trade": _score_trade,
     }
 
 

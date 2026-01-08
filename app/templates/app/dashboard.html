@@ -40,6 +40,7 @@
               <th class="px-4 py-3">Type</th>
               <th class="px-4 py-3">Form</th>
               <th class="px-4 py-3">Amount</th>
+              <th class="px-4 py-3">Score</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-900/60">
@@ -78,6 +79,12 @@
 	                  {% else %}
 	                    —
 	                  {% endif %}
+	                </td>
+	                <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+	                  {% set score = score_trade(t) %}
+	                  <span class="text-xs font-medium {{ 'text-emerald-300' if score >= 70 else 'text-amber-300' if score >= 50 else 'text-rose-300' }}">
+	                    {{ score }}
+	                  </span>
 	                </td>
 	              </tr>
             {% endfor %}
