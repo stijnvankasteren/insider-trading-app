@@ -105,6 +105,34 @@ curl -sS -X DELETE "http://localhost:8000/api/ingest/trades?form=4&confirm=true"
   -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')"
 ```
 
+### Ingest CIK list
+
+The app also exposes `POST /api/ingest/cik` protected by `INGEST_SECRET`. Use it to store a daily CIK -> company name list so you only pull from sec.gov once per day.
+
+Example payload (single object or an array of objects):
+
+```json
+{
+  "cik": "0000320193",
+  "company_name": "Apple Inc."
+}
+```
+
+Common aliases:
+- `cik` (or `cik_str`, `cikStr`)
+- `company_name` (or `companyName`, `name`, `title`)
+
+Quick test (local):
+
+```bash
+curl -sS -X POST "http://localhost:8000/api/ingest/cik" \
+  -H "content-type: application/json" \
+  -H "x-ingest-secret: $(grep '^INGEST_SECRET=' .env | cut -d= -f2- | tr -d '\"')" \
+  -d '{"cik_str":320193,"title":"Apple Inc."}'
+```
+
+Tip: the SEC company_tickers.json list can be larger than the default `INGEST_MAX_ITEMS` (5000). Either chunk the payload or raise the limit via `INGEST_MAX_ITEMS`.
+
 The UI pages `/app/3`, `/app/insiders`, `/app/13d`, `/app/13f`, `/app/8k`, `/app/10k`, `/app/congress`, `/app/search`, `/app/watchlist` will read from the database.
 
 ## Deploy (Linux server)

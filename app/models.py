@@ -88,6 +88,25 @@ class Trade(Base):
 Index("ix_trades_form_date", Trade.form, Trade.transaction_date)
 
 
+class CikCompany(Base):
+    __tablename__ = "cik_companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    cik: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    company_name: Mapped[str] = mapped_column(String(256), index=True)
+
+    raw: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql")
+    )
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
 class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
     __table_args__ = (

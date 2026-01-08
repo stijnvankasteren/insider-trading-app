@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.forms import form_prefix, normalize_form
-from app.models import Trade
+from app.models import CikCompany, Trade
 from app.settings import get_settings
 
 router = APIRouter(tags=["ingest"])
@@ -169,6 +169,35 @@ class IngestTradeItem(BaseModel):
         return parsed
 
 
+class IngestCikItem(BaseModel):
+    model_config = ConfigDict(extra="allow", str_strip_whitespace=True)
+
+    cik: str = Field(
+        validation_alias=AliasChoices("cik", "cik_str", "cikStr"),
+        max_length=32,
+    )
+    company_name: str = Field(
+        validation_alias=AliasChoices("company_name", "companyName", "name", "title"),
+        max_length=256,
+    )
+
+    @field_validator("cik", mode="before")
+    @classmethod
+    def _validate_cik(cls, value: object) -> str:
+        normalized = _normalize_cik(value)
+        if not normalized:
+            raise ValueError("Invalid cik")
+        return normalized
+
+    @field_validator("company_name", mode="before")
+    @classmethod
+    def _validate_company_name(cls, value: object) -> str:
+        cleaned = _clean_str(value)
+        if not cleaned:
+            raise ValueError("Invalid company_name")
+        return cleaned
+
+
 def _clean_str(value: object) -> Optional[str]:
     if value is None:
         return None
@@ -180,6 +209,31 @@ def _clean_str(value: object) -> Optional[str]:
         return None
     v = value.strip()
     return v or None
+
+
+def _normalize_cik(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        if value < 0:
+            return None
+        digits = str(value)
+    elif isinstance(value, str):
+        v = value.strip()
+        if not v:
+            return None
+        if v.lower().startswith("cik"):
+            v = v[3:].strip()
+        if not v.isdigit():
+            return None
+        digits = v
+    else:
+        return None
+    if len(digits) > 10:
+        return None
+    return digits.zfill(10)
 
 
 def _has_trade_data(payload: dict[str, Any]) -> bool:
@@ -535,6 +589,82 @@ def ingest_trades(
         "skipped_empty": skipped_empty,
         "errors": errors[:50],
     }
+
+
+@router.post("/cik")
+def ingest_cik(
+    body: Any = Body(...),
+    _: None = Depends(_require_ingest_secret),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    inserted = 0
+    updated = 0
+    errors: list[dict[str, Any]] = []
+
+    items: list[tuple[int, dict[str, Any]]] = []
+    if isinstance(body, list):
+        for idx, item in enumerate(body):
+            if not isinstance(item, dict):
+                errors.append({"index": idx, "error": "Each item must be an object"})
+                continue
+            items.append((idx, item))
+    elif isinstance(body, dict):
+        items.append((0, body))
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Body must be an object or an array of objects",
+        )
+
+    settings = get_settings()
+    max_items = max(1, int(getattr(settings, "ingest_max_items", 5000)))
+    if len(items) > max_items:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Too many items (max {max_items})",
+        )
+
+    for idx, raw in items:
+        try:
+            item = IngestCikItem.model_validate(raw)
+        except ValidationError as exc:
+            summary = "; ".join(f"{e.get('loc')}: {e.get('msg')}" for e in exc.errors()[:5])
+            errors.append({"index": idx, "error": f"Invalid item: {summary or 'validation error'}"})
+            continue
+
+        extra = item.model_extra or {}
+        if settings.ingest_reject_extra_fields and extra:
+            errors.append(
+                {
+                    "index": idx,
+                    "error": f"Unexpected field(s): {', '.join(sorted(extra.keys()))}",
+                }
+            )
+            continue
+
+        payload = {
+            "cik": item.cik,
+            "company_name": item.company_name,
+            "raw": _cap_raw_payload(raw),
+        }
+
+        existing = db.scalar(select(CikCompany).where(CikCompany.cik == payload["cik"]))
+        if existing:
+            existing.company_name = payload["company_name"]
+            existing.raw = payload["raw"]
+            updated += 1
+        else:
+            db.add(
+                CikCompany(
+                    cik=payload["cik"],
+                    company_name=payload["company_name"],
+                    raw=payload["raw"],
+                )
+            )
+            inserted += 1
+
+    db.commit()
+    return {"inserted": inserted, "updated": updated, "errors": errors[:50]}
 
 
 @router.delete("/trades")
