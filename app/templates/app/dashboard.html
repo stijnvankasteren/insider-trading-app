@@ -63,7 +63,7 @@
                   {% endif %}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
-                  {{ t.transaction_type or "—" }}
+                  {{ tx_label(t.form, t.transaction_type) }}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-slate-300">
                   {{ t.form or "—" }}

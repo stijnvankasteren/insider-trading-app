@@ -81,7 +81,7 @@
                   —
                 {% endif %}
               </td>
-	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ t.transaction_type or "—" }}</td>
+	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ tx_label(t.form, t.transaction_type) }}</td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">{{ t.form or "—" }}</td>
 	              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
 	                {% if t.amount_usd_low is not none or t.amount_usd_high is not none %}

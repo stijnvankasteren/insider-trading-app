@@ -42,6 +42,17 @@ def _build_url(path: str, params: dict[str, Any]) -> str:
     return f"{path}?{urlencode(clean)}"
 
 
+def _display_tx_type(form: Optional[str], tx_type: Optional[str]) -> str:
+    tx_value = (tx_type or "").strip()
+    if form_prefix(form) == "FORM 4":
+        code = tx_value.upper()
+        if code == "A":
+            return "BUY"
+        if code == "D":
+            return "SELL"
+    return tx_value or "—"
+
+
 def _safe_next_path(value: Optional[str], *, default: str = "/app") -> str:
     """
     Prevent open redirects by only allowing local absolute paths ("/...").
@@ -133,6 +144,7 @@ def _base_context(request: Request) -> dict[str, Any]:
         "csrf_token": csrf_token,
         "form_labels": FORM_LABELS,
         "form_prefix_order": FORM_PREFIX_ORDER,
+        "tx_label": _display_tx_type,
     }
 
 
