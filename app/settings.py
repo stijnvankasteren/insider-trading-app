@@ -86,12 +86,11 @@ class Settings:
     llm_base_url: str
     llm_model: str
     llm_score_enabled: bool
-    llm_score_daily_hour: int
-    llm_score_daily_minute: int
     llm_score_stale_hours: int
     llm_score_max_per_run: int
     llm_score_timeout_seconds: int
     llm_score_sleep_ms: int
+    llm_schedule_interval_minutes: int
     llm_person_summary_enabled: bool
     llm_person_summary_stale_hours: int
     llm_person_summary_max_per_run: int
@@ -163,16 +162,15 @@ def get_settings() -> Settings:
         llm_base_url=llm_base_url or "https://openrouter.ai/api/v1",
         llm_model=llm_model or "xiaomi/mimo-v2-flash:free",
         llm_score_enabled=llm_score_enabled,
-        llm_score_daily_hour=_env_int("LLM_SCORE_DAILY_HOUR", 3, min_value=0, max_value=23),
-        llm_score_daily_minute=_env_int(
-            "LLM_SCORE_DAILY_MINUTE", 0, min_value=0, max_value=59
-        ),
         llm_score_stale_hours=_env_int("LLM_SCORE_STALE_HOURS", 24, min_value=1, max_value=168),
         llm_score_max_per_run=_env_int("LLM_SCORE_MAX_PER_RUN", 0, min_value=0, max_value=100_000),
         llm_score_timeout_seconds=_env_int(
             "LLM_SCORE_TIMEOUT_SECONDS", 30, min_value=5, max_value=300
         ),
         llm_score_sleep_ms=_env_int("LLM_SCORE_SLEEP_MS", 0, min_value=0, max_value=10_000),
+        llm_schedule_interval_minutes=_env_int(
+            "LLM_SCHEDULE_INTERVAL_MINUTES", 15, min_value=1, max_value=10_000
+        ),
         llm_person_summary_enabled=llm_person_summary_enabled,
         llm_person_summary_stale_hours=_env_int(
             "LLM_PERSON_SUMMARY_STALE_HOURS", 24, min_value=1, max_value=168

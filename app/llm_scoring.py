@@ -527,14 +527,6 @@ def summarize_people_once() -> dict[str, int]:
     return {"summarized": summarized, "failed": failed}
 
 
-def _seconds_until_next_run(hour: int, minute: int) -> float:
-    now = dt.datetime.now()
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if target <= now:
-        target += dt.timedelta(days=1)
-    return max(0, (target - now).total_seconds())
-
-
 def _llm_jobs_enabled(settings: Settings) -> bool:
     if not settings.llm_api_key:
         return False
@@ -552,17 +544,18 @@ def _run_llm_jobs() -> None:
 def _scoring_loop() -> None:
     settings = get_settings()
     logger.info(
-        "LLM scheduler started (model=%s, score=%s, person_summary=%s).",
+        "LLM scheduler started (model=%s, score=%s, person_summary=%s, interval=%sm).",
         settings.llm_model,
         settings.llm_score_enabled,
         settings.llm_person_summary_enabled,
+        settings.llm_schedule_interval_minutes,
     )
 
     _run_llm_jobs()
 
     while True:
-        delay = _seconds_until_next_run(settings.llm_score_daily_hour, settings.llm_score_daily_minute)
-        time.sleep(delay)
+        interval_seconds = max(60, int(settings.llm_schedule_interval_minutes) * 60)
+        time.sleep(interval_seconds)
         _run_llm_jobs()
 
 
