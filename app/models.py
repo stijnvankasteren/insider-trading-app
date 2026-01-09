@@ -112,6 +112,25 @@ class CikCompany(Base):
     )
 
 
+class PersonSummary(Base):
+    __tablename__ = "person_summaries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    person_slug: Mapped[str] = mapped_column(String(256), unique=True, index=True)
+    person_name: Mapped[Optional[str]] = mapped_column(String(256))
+
+    summary: Mapped[Optional[str]] = mapped_column(Text)
+    summary_model: Mapped[Optional[str]] = mapped_column(String(64))
+    summary_updated_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
 class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
     __table_args__ = (

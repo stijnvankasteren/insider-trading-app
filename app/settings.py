@@ -92,6 +92,12 @@ class Settings:
     llm_score_max_per_run: int
     llm_score_timeout_seconds: int
     llm_score_sleep_ms: int
+    llm_person_summary_enabled: bool
+    llm_person_summary_stale_hours: int
+    llm_person_summary_max_per_run: int
+    llm_person_summary_max_trades: int
+    llm_person_summary_max_tokens: int
+    llm_person_summary_sleep_ms: int
 
 
 @lru_cache
@@ -114,6 +120,7 @@ def get_settings() -> Settings:
     llm_base_url = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").strip()
     llm_model = os.environ.get("LLM_MODEL", "xiaomi/mimo-v2-flash:free").strip()
     llm_score_enabled = _env_bool("LLM_SCORE_ENABLED", bool(llm_api_key))
+    llm_person_summary_enabled = _env_bool("LLM_PERSON_SUMMARY_ENABLED", bool(llm_api_key))
 
     return Settings(
         app_name=os.environ.get("APP_NAME", "AltData"),
@@ -166,4 +173,20 @@ def get_settings() -> Settings:
             "LLM_SCORE_TIMEOUT_SECONDS", 30, min_value=5, max_value=300
         ),
         llm_score_sleep_ms=_env_int("LLM_SCORE_SLEEP_MS", 0, min_value=0, max_value=10_000),
+        llm_person_summary_enabled=llm_person_summary_enabled,
+        llm_person_summary_stale_hours=_env_int(
+            "LLM_PERSON_SUMMARY_STALE_HOURS", 24, min_value=1, max_value=168
+        ),
+        llm_person_summary_max_per_run=_env_int(
+            "LLM_PERSON_SUMMARY_MAX_PER_RUN", 0, min_value=0, max_value=100_000
+        ),
+        llm_person_summary_max_trades=_env_int(
+            "LLM_PERSON_SUMMARY_MAX_TRADES", 30, min_value=5, max_value=500
+        ),
+        llm_person_summary_max_tokens=_env_int(
+            "LLM_PERSON_SUMMARY_MAX_TOKENS", 300, min_value=50, max_value=2000
+        ),
+        llm_person_summary_sleep_ms=_env_int(
+            "LLM_PERSON_SUMMARY_SLEEP_MS", 0, min_value=0, max_value=10_000
+        ),
     )

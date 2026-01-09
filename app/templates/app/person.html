@@ -53,6 +53,20 @@
     </div>
   </div>
 
+  <div class="mt-6 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+    <div class="text-sm font-medium">AI summary</div>
+    {% if person_summary %}
+      <p class="mt-2 text-sm text-slate-300">{{ person_summary }}</p>
+      {% if person_summary_updated_at %}
+        <div class="mt-2 text-xs text-slate-500">Updated {{ person_summary_updated_at }}</div>
+      {% endif %}
+    {% else %}
+      <div class="mt-2 text-sm text-slate-400">
+        AI summary will appear after the daily job runs.
+      </div>
+    {% endif %}
+  </div>
+
   <div class="mt-8 overflow-hidden rounded-xl border border-slate-800">
     <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
       Recent trades

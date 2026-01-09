@@ -154,6 +154,15 @@ Scheduling / limits:
 Notes:
 - Scoring runs in-process once per day; if you run multiple workers, each worker will run the job.
 - The model only receives the trade data stored in the DB (no external fundamentals unless you add them).
+- Person summaries use the same daily schedule as scoring (`LLM_SCORE_DAILY_*`).
+
+LLM person summaries (daily):
+- `LLM_PERSON_SUMMARY_ENABLED` (default true when `LLM_API_KEY` is set)
+- `LLM_PERSON_SUMMARY_STALE_HOURS`
+- `LLM_PERSON_SUMMARY_MAX_PER_RUN` (0 = no limit)
+- `LLM_PERSON_SUMMARY_MAX_TRADES` (recent trades included in the prompt)
+- `LLM_PERSON_SUMMARY_MAX_TOKENS`
+- `LLM_PERSON_SUMMARY_SLEEP_MS`
 
 ## Deploy (Linux server)
 

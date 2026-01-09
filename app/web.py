@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.forms import FORM_LABELS, FORM_PREFIX_ORDER, form_prefix, normalize_form
 from app.market_data import MarketDataError, PricePoint, fetch_stooq_daily_prices
-from app.models import Subscriber, Trade, User, WatchlistItem
+from app.models import PersonSummary, Subscriber, Trade, User, WatchlistItem
 from app.sanitization import sql_like_contains
 from app.settings import get_settings
 
@@ -1585,6 +1585,14 @@ def app_person(
         )
     )
 
+    summary = db.scalar(select(PersonSummary).where(PersonSummary.person_slug == slug_norm))
+    summary_text = summary.summary if summary else None
+    summary_updated_at = (
+        summary.summary_updated_at.date().isoformat()
+        if summary and summary.summary_updated_at
+        else None
+    )
+
     return _render(
         request,
         "app/person.html",
@@ -1597,5 +1605,7 @@ def app_person(
             "by_form_prefix": by_form_prefix,
             "trades": trades,
             "watchlisted": watchlisted,
+            "person_summary": summary_text,
+            "person_summary_updated_at": summary_updated_at,
         },
     )
