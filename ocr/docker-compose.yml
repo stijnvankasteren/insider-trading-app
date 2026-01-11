@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  ocr-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OCR_LANGS: "eng"
+      OCR_DPI: "300"
+      MIN_TEXT_CHARS: "30"
+      MAX_PAGES: "50"
+      MAX_FILE_MB: "25"
+    restart: unless-stopped
