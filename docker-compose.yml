@@ -47,5 +47,17 @@ services:
     depends_on:
       - db
 
+  ocr:
+    build:
+      context: ./ocr
+    ports:
+      - "${OCR_PORT_MAPPING:-8001:8000}"
+    environment:
+      OCR_LANGS: "eng"
+      OCR_DPI: "300"
+      MIN_TEXT_CHARS: "30"
+      MAX_PAGES: "50"
+      MAX_FILE_MB: "25"
+
 volumes:
   db_data:
