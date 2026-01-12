@@ -1,0 +1,346 @@
+{% extends "app/_layout.html" %}
+{% block app_content %}
+  {% if portfolio_notice %}
+    <div
+      class="mb-4 rounded-xl border px-4 py-3 text-sm {{ 'border-emerald-900/50 bg-emerald-900/10 text-emerald-100' if portfolio_notice.kind == 'success' else 'border-amber-900/50 bg-amber-900/10 text-amber-100' if portfolio_notice.kind == 'warning' else 'border-rose-900/50 bg-rose-900/10 text-rose-100' }}"
+    >
+      {{ portfolio_notice.message }}
+    </div>
+  {% endif %}
+
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-slate-800 bg-slate-900/30 p-4">
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">OCR import</div>
+        <span class="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">Images + PDFs</span>
+      </div>
+      <p class="mt-2 text-sm text-slate-300">
+        Upload broker statements, trade confirmations, or screenshots. We extract date, ticker, price, quantity, and fees.
+      </p>
+      <ul class="mt-3 space-y-1 text-xs text-slate-400">
+        <li>Auto-detects buys, sells, splits, and dividends.</li>
+        <li>Review and fix before final import.</li>
+      </ul>
+      <form
+        class="mt-4 space-y-2"
+        method="post"
+        action="/app/portfolio/import/ocr"
+        enctype="multipart/form-data"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:text-slate-200 hover:file:bg-slate-700"
+          type="file"
+          name="ocr_file"
+          accept=".pdf,image/*"
+          required
+        />
+        <div class="grid gap-2 sm:grid-cols-2">
+          <select
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+            name="broker"
+          >
+            <option value="">Select broker (optional)</option>
+            {% for item in broker_catalog %}
+              <option value="{{ item.slug }}">{{ item.label }}</option>
+            {% endfor %}
+          </select>
+          <input
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
+            type="text"
+            name="account"
+            placeholder="Account label (optional)"
+          />
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+            type="submit"
+          >
+            Upload for OCR
+          </button>
+          <span class="text-xs text-slate-500">Requires OCR service</span>
+        </div>
+      </form>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900/30 p-4">
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">CSV import</div>
+        <span class="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">Template</span>
+      </div>
+      <p class="mt-2 text-sm text-slate-300">
+        Drop in a CSV from your broker or export from another tracker. Map columns once and reuse.
+      </p>
+      <ul class="mt-3 space-y-1 text-xs text-slate-400">
+        <li>Supports trades, fees, cash movements, and dividends.</li>
+        <li>Duplicate detection to avoid double counting.</li>
+      </ul>
+      <form
+        class="mt-4 space-y-2"
+        method="post"
+        action="/app/portfolio/import/csv"
+        enctype="multipart/form-data"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input
+          class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:text-slate-200 hover:file:bg-slate-700"
+          type="file"
+          name="csv_file"
+          accept=".csv,text/csv"
+          required
+        />
+        <div class="grid gap-2 sm:grid-cols-3">
+          <select
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+            name="broker"
+          >
+            <option value="">Select broker (optional)</option>
+            {% for item in broker_catalog %}
+              <option value="{{ item.slug }}">{{ item.label }}</option>
+            {% endfor %}
+          </select>
+          <input
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
+            type="text"
+            name="account"
+            placeholder="Account label (optional)"
+          />
+          <input
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
+            type="text"
+            name="currency"
+            placeholder="Currency (e.g. USD)"
+          />
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+            type="submit"
+          >
+            Upload CSV
+          </button>
+          <a
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+            href="/api/portfolio/template.csv"
+          >
+            Download template
+          </a>
+        </div>
+      </form>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900/30 p-4">
+      <div class="flex items-center justify-between">
+        <div class="text-sm font-medium">Broker APIs</div>
+        <span class="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">Read-only</span>
+      </div>
+      <p class="mt-2 text-sm text-slate-300">
+        Connect your brokerage accounts to sync transactions automatically and keep positions up to date.
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
+        {% for item in broker_catalog %}
+          <span class="rounded-md border border-slate-800 px-2 py-1">{{ item.label }}</span>
+        {% endfor %}
+      </div>
+
+      {% if broker_connections|length == 0 %}
+        <div class="mt-3 text-xs text-slate-500">No broker connections yet.</div>
+      {% else %}
+        <ul class="mt-3 space-y-2 text-xs text-slate-400">
+          {% for conn in broker_connections %}
+            <li class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+              <div>
+                <div class="text-slate-200">{{ broker_label(conn.broker) }}</div>
+                {% if conn.account %}
+                  <div class="text-slate-500">{{ conn.account }}</div>
+                {% endif %}
+              </div>
+              <div class="flex items-center gap-3">
+                <span
+                  class="text-xs font-medium {{ 'text-amber-300' if conn.status == 'pending' else 'text-rose-300' if conn.status == 'disconnected' else 'text-emerald-300' }}"
+                >
+                  {{ conn.status }}
+                </span>
+                <form method="post" action="/app/portfolio/disconnect">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <input type="hidden" name="broker" value="{{ conn.broker }}" />
+                  <input type="hidden" name="account" value="{{ conn.account or '' }}" />
+                  <button
+                    class="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:border-slate-500"
+                    type="submit"
+                  >
+                    Disconnect
+                  </button>
+                </form>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      <form class="mt-4 space-y-2" method="post" action="/app/portfolio/connect">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="grid gap-2 sm:grid-cols-2">
+          <select
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+            name="broker"
+            required
+          >
+            <option value="">Select broker</option>
+            {% for item in broker_catalog %}
+              <option value="{{ item.slug }}">{{ item.label }}</option>
+            {% endfor %}
+          </select>
+          <input
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
+            type="text"
+            name="account"
+            placeholder="Account label (optional)"
+          />
+        </div>
+        <button
+          class="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+          type="submit"
+        >
+          Connect broker
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-slate-800 bg-slate-900/20 lg:col-span-2">
+      <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+        Latest transactions
+      </div>
+      {% if portfolio_transactions|length == 0 %}
+        <div class="bg-slate-950 px-4 py-6 text-sm text-slate-400">
+          No portfolio transactions yet.
+        </div>
+      {% else %}
+        <div class="overflow-x-auto bg-slate-950">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-900/30 text-xs uppercase tracking-wide text-slate-400">
+              <tr>
+                <th class="px-4 py-3">Date</th>
+                <th class="px-4 py-3">Broker</th>
+                <th class="px-4 py-3">Symbol</th>
+                <th class="px-4 py-3">Type</th>
+                <th class="px-4 py-3">Qty</th>
+                <th class="px-4 py-3">Price</th>
+                <th class="px-4 py-3">Amount</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-900/60">
+              {% for t in portfolio_transactions %}
+                <tr class="hover:bg-slate-900/20">
+                  <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                    {{ t.trade_date or "-" }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                    {{ broker_label(t.broker) if t.broker else "-" }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap font-medium">
+                    {{ t.symbol or "-" }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                    {{ t.activity_type or "-" }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                    {{ t.quantity if t.quantity is not none else "-" }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                    {{ t.price if t.price is not none else "-" }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                    {% if t.amount is not none %}
+                      {{ t.amount }}{% if t.currency %} {{ t.currency }}{% endif %}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900/20">
+      <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
+        Recent imports
+      </div>
+      {% if portfolio_imports|length == 0 %}
+        <div class="bg-slate-950 px-4 py-6 text-sm text-slate-400">
+          No imports yet.
+        </div>
+      {% else %}
+        <ul class="divide-y divide-slate-900/60 bg-slate-950">
+          {% for item in portfolio_imports %}
+            <li class="px-4 py-3">
+              <div class="flex items-center justify-between gap-3 text-xs">
+                <div class="text-slate-200">
+                  {{ item.source|upper }}
+                  {% if item.broker %}
+                    - {{ broker_label(item.broker) }}
+                  {% endif %}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span
+                    class="text-xs font-medium {{ 'text-emerald-300' if item.status == 'completed' else 'text-amber-300' if item.status == 'partial' else 'text-rose-300' }}"
+                  >
+                    {{ item.status }}
+                  </span>
+                  <span class="text-slate-500">
+                    {{ item.created_at.date() if item.created_at else "" }}
+                  </span>
+                </div>
+              </div>
+              <div class="mt-1 text-xs text-slate-400">
+                {{ item.message or "Import queued." }}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-slate-800 bg-slate-900/20 p-4 lg:col-span-2">
+      <div class="text-sm font-medium">Import workflow</div>
+      <div class="mt-3 grid gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-500">Step 1</div>
+          <div class="mt-1 text-sm text-slate-200">Choose a source</div>
+          <div class="mt-1 text-xs text-slate-500">OCR, CSV, or API sync.</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-500">Step 2</div>
+          <div class="mt-1 text-sm text-slate-200">Verify trades</div>
+          <div class="mt-1 text-xs text-slate-500">Review parsed data and fix any rows.</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-500">Step 3</div>
+          <div class="mt-1 text-sm text-slate-200">Import and reconcile</div>
+          <div class="mt-1 text-xs text-slate-500">We merge duplicates and update holdings.</div>
+        </div>
+      </div>
+      <div class="mt-4 text-xs text-slate-500">
+        Tip: keep one source of truth per broker to avoid overlaps.
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900/20 p-4">
+      <div class="text-sm font-medium">Data captured</div>
+      <ul class="mt-3 space-y-2 text-xs text-slate-400">
+        <li>Trade date, side, quantity, price, fees.</li>
+        <li>Ticker, ISIN, currency, and exchange.</li>
+        <li>Cash movements, dividends, and splits.</li>
+        <li>Holdings and cost basis updates.</li>
+      </ul>
+    </div>
+  </div>
+{% endblock %}

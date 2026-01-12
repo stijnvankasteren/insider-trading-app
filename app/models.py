@@ -155,3 +155,102 @@ class WatchlistItem(Base):
 
 
 Index("ix_watchlist_user_kind", WatchlistItem.user_id, WatchlistItem.kind)
+
+
+class PortfolioTransaction(Base):
+    __tablename__ = "portfolio_transactions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "external_id", name="uq_portfolio_tx_user_external"),
+        Index("ix_portfolio_tx_user_date", "user_id", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    external_id: Mapped[str] = mapped_column(String(160))
+
+    broker: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    account: Mapped[Optional[str]] = mapped_column(String(128))
+
+    activity_type: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    symbol: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(256))
+
+    trade_date: Mapped[Optional[dt.date]] = mapped_column(Date, index=True)
+    settlement_date: Mapped[Optional[dt.date]] = mapped_column(Date)
+
+    quantity: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
+    price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
+    fees: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
+    amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6))
+    currency: Mapped[Optional[str]] = mapped_column(String(8))
+
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    import_batch: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+
+    raw: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql")
+    )
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class PortfolioImport(Base):
+    __tablename__ = "portfolio_imports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    broker: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32))
+
+    file_name: Mapped[Optional[str]] = mapped_column(String(256))
+    file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
+
+    inserted: Mapped[Optional[int]] = mapped_column(Integer)
+    updated: Mapped[Optional[int]] = mapped_column(Integer)
+    error_count: Mapped[Optional[int]] = mapped_column(Integer)
+
+    message: Mapped[Optional[str]] = mapped_column(Text)
+
+    raw: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql")
+    )
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class BrokerConnection(Base):
+    __tablename__ = "broker_connections"
+    __table_args__ = (
+        UniqueConstraint("user_id", "broker", "account", name="uq_broker_conn_user"),
+        Index("ix_broker_conn_user_broker", "user_id", "broker"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    broker: Mapped[str] = mapped_column(String(32))
+    account: Mapped[Optional[str]] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(32))
+
+    last_synced_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    raw: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql")
+    )
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

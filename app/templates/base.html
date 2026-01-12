@@ -15,6 +15,7 @@
       or path.startswith('/app/people')
       or path.startswith('/app/companies')
       or path.startswith('/app/prices')
+      or path.startswith('/app/portfolio')
       or path.startswith('/app/watchlist')
       or path.startswith('/app/settings')
     %}
@@ -72,6 +73,12 @@
                 href="/app/watchlist"
               >
                 Watchlist
+              </a>
+              <a
+                class="block rounded-md px-2 py-1 {{ 'bg-slate-900/60 text-white' if path.startswith('/app/portfolio') else 'text-slate-300 hover:bg-slate-900/60 hover:text-white' }}"
+                href="/app/portfolio"
+              >
+                Portfolio tracker
               </a>
               <a
                 class="block rounded-md px-2 py-1 {{ 'bg-slate-900/60 text-white' if path.startswith('/app/settings') else 'text-slate-300 hover:bg-slate-900/60 hover:text-white' }}"

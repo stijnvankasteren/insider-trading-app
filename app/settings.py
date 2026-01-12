@@ -97,6 +97,9 @@ class Settings:
     llm_person_summary_max_trades: int
     llm_person_summary_max_tokens: int
     llm_person_summary_sleep_ms: int
+    ocr_service_url: str
+    portfolio_max_items: int
+    portfolio_upload_max_mb: int
 
 
 @lru_cache
@@ -120,6 +123,7 @@ def get_settings() -> Settings:
     llm_model = os.environ.get("LLM_MODEL", "xiaomi/mimo-v2-flash:free").strip()
     llm_score_enabled = _env_bool("LLM_SCORE_ENABLED", bool(llm_api_key))
     llm_person_summary_enabled = _env_bool("LLM_PERSON_SUMMARY_ENABLED", bool(llm_api_key))
+    ocr_service_url = os.environ.get("OCR_SERVICE_URL", "").strip()
 
     return Settings(
         app_name=os.environ.get("APP_NAME", "AltData"),
@@ -187,4 +191,7 @@ def get_settings() -> Settings:
         llm_person_summary_sleep_ms=_env_int(
             "LLM_PERSON_SUMMARY_SLEEP_MS", 0, min_value=0, max_value=10_000
         ),
+        ocr_service_url=ocr_service_url,
+        portfolio_max_items=_env_int("PORTFOLIO_MAX_ITEMS", 5000, min_value=1, max_value=50_000),
+        portfolio_upload_max_mb=_env_int("PORTFOLIO_UPLOAD_MAX_MB", 25, min_value=1, max_value=500),
     )

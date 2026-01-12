@@ -7,11 +7,13 @@ import secrets
 import base64
 import hashlib
 import hmac
+import httpx
 from urllib.parse import urlencode, urlsplit
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Request, status
+from fastapi import UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, or_, select
@@ -21,7 +23,26 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.forms import FORM_LABELS, FORM_PREFIX_ORDER, form_prefix, normalize_form
 from app.market_data import MarketDataError, PricePoint, fetch_stooq_daily_prices
-from app.models import PersonSummary, Subscriber, Trade, User, WatchlistItem
+from app.models import (
+    BrokerConnection,
+    PersonSummary,
+    PortfolioImport,
+    PortfolioTransaction,
+    Subscriber,
+    Trade,
+    User,
+    WatchlistItem,
+)
+from app.portfolio import (
+    BROKER_CATALOG,
+    add_portfolio_import,
+    broker_label,
+    decode_upload,
+    normalize_broker_slug,
+    parse_portfolio_csv,
+    upsert_broker_connection,
+    upsert_portfolio_transactions,
+)
 from app.sanitization import sql_like_contains
 from app.settings import get_settings
 
@@ -1302,6 +1323,333 @@ def app_prices(
             "stats": stats,
             "error": error,
         },
+    )
+
+
+def _portfolio_notice(request: Request) -> Optional[dict[str, str]]:
+    notice = request.query_params.get("notice")
+    if not notice:
+        return None
+
+    if notice == "csv":
+        inserted = request.query_params.get("inserted") or "0"
+        updated = request.query_params.get("updated") or "0"
+        errors = request.query_params.get("errors") or "0"
+        status_label = request.query_params.get("status") or "completed"
+        kind = "success" if status_label == "completed" else "warning"
+        return {
+            "kind": kind,
+            "message": f"CSV import: {inserted} inserted, {updated} updated, {errors} errors.",
+        }
+    if notice == "ocr":
+        status_label = request.query_params.get("status") or "completed"
+        kind = "success" if status_label == "completed" else "error"
+        message = "OCR import completed."
+        if status_label != "completed":
+            message = "OCR import failed. Check OCR service configuration."
+        return {"kind": kind, "message": message}
+    if notice == "broker":
+        broker = request.query_params.get("broker") or "broker"
+        status_label = request.query_params.get("status") or "pending"
+        kind = "success" if status_label == "pending" else "warning"
+        return {
+            "kind": kind,
+            "message": f"{broker} connection status: {status_label}.",
+        }
+    return None
+
+
+def _portfolio_context(
+    request: Request,
+    db: Session,
+    user_id: str,
+) -> dict[str, Any]:
+    transactions = db.scalars(
+        select(PortfolioTransaction)
+        .where(PortfolioTransaction.user_id == user_id)
+        .order_by(
+            PortfolioTransaction.trade_date.is_(None),
+            PortfolioTransaction.trade_date.desc(),
+            PortfolioTransaction.created_at.desc(),
+        )
+        .limit(20)
+    ).all()
+
+    imports = db.scalars(
+        select(PortfolioImport)
+        .where(PortfolioImport.user_id == user_id)
+        .order_by(PortfolioImport.created_at.desc())
+        .limit(8)
+    ).all()
+
+    connections = db.scalars(
+        select(BrokerConnection)
+        .where(BrokerConnection.user_id == user_id)
+        .order_by(BrokerConnection.created_at.desc())
+    ).all()
+
+    brokers = [
+        {"slug": slug, "label": label} for slug, label in sorted(BROKER_CATALOG.items())
+    ]
+
+    return {
+        "page_title": "Portfolio tracker",
+        "page_subtitle": "Import all transactions via OCR, CSV, or broker APIs.",
+        "portfolio_notice": _portfolio_notice(request),
+        "portfolio_transactions": transactions,
+        "portfolio_imports": imports,
+        "broker_connections": connections,
+        "broker_catalog": brokers,
+        "broker_label": broker_label,
+    }
+
+
+@router.get("/app/portfolio", response_class=HTMLResponse)
+def app_portfolio(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_require_login),
+):
+    return _render(request, "app/portfolio.html", _portfolio_context(request, db, user_id))
+
+
+@router.post("/app/portfolio/import/csv", response_class=HTMLResponse)
+def app_portfolio_import_csv(
+    request: Request,
+    csv_file: UploadFile = File(...),
+    broker: Optional[str] = Form(default=None, max_length=64),
+    account: Optional[str] = Form(default=None, max_length=128),
+    currency: Optional[str] = Form(default=None, max_length=8),
+    csrf_token: Optional[str] = Form(default=None, max_length=256),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_require_login),
+):
+    _require_csrf(request, csrf_token)
+    settings = get_settings()
+
+    data = csv_file.file.read()
+    if not data:
+        return RedirectResponse(url="/app/portfolio?notice=csv&status=failed", status_code=303)
+
+    max_bytes = int(settings.portfolio_upload_max_mb) * 1_048_576
+    if len(data) > max_bytes:
+        return RedirectResponse(url="/app/portfolio?notice=csv&status=failed", status_code=303)
+
+    text = decode_upload(data)
+    default_broker = normalize_broker_slug(broker)
+    account_value = account.strip() if account else None
+    result = parse_portfolio_csv(
+        text,
+        default_broker=default_broker,
+        default_account=account_value,
+        default_currency=currency,
+        max_items=settings.portfolio_max_items,
+    )
+
+    import_batch = secrets.token_urlsafe(8)
+    inserted, updated = upsert_portfolio_transactions(
+        db,
+        user_id=user_id,
+        items=result.items,
+        import_batch=import_batch,
+    )
+
+    error_count = len(result.errors)
+    if inserted or updated:
+        status_label = "completed" if error_count == 0 else "partial"
+    else:
+        status_label = "failed" if error_count else "completed"
+
+    broker_name = broker_label(default_broker) if default_broker else None
+    summary = f"CSV import: {inserted} inserted, {updated} updated, {error_count} errors."
+    if broker_name:
+        summary = f"{summary} Broker: {broker_name}."
+
+    add_portfolio_import(
+        db,
+        user_id=user_id,
+        source="csv",
+        status=status_label,
+        broker=default_broker,
+        file_name=csv_file.filename,
+        file_size_bytes=len(data),
+        inserted=inserted,
+        updated=updated,
+        error_count=error_count,
+        message=summary,
+        raw={"errors": result.errors[:50], "skipped_empty": result.skipped_empty},
+    )
+    db.commit()
+
+    return RedirectResponse(
+        url=_build_url(
+            "/app/portfolio",
+            {
+                "notice": "csv",
+                "inserted": inserted,
+                "updated": updated,
+                "errors": error_count,
+                "status": status_label,
+            },
+        ),
+        status_code=303,
+    )
+
+
+@router.post("/app/portfolio/import/ocr", response_class=HTMLResponse)
+def app_portfolio_import_ocr(
+    request: Request,
+    ocr_file: UploadFile = File(...),
+    broker: Optional[str] = Form(default=None, max_length=64),
+    account: Optional[str] = Form(default=None, max_length=128),
+    csrf_token: Optional[str] = Form(default=None, max_length=256),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_require_login),
+):
+    _require_csrf(request, csrf_token)
+    settings = get_settings()
+
+    data = ocr_file.file.read()
+    if not data:
+        return RedirectResponse(url="/app/portfolio?notice=ocr&status=failed", status_code=303)
+
+    max_bytes = int(settings.portfolio_upload_max_mb) * 1_048_576
+    if len(data) > max_bytes:
+        return RedirectResponse(url="/app/portfolio?notice=ocr&status=failed", status_code=303)
+
+    ocr_url = settings.ocr_service_url.rstrip("/")
+    broker_slug = normalize_broker_slug(broker)
+    if not ocr_url:
+        add_portfolio_import(
+            db,
+            user_id=user_id,
+            source="ocr",
+            status="failed",
+            broker=broker_slug,
+            file_name=ocr_file.filename,
+            file_size_bytes=len(data),
+            error_count=1,
+            message="OCR_SERVICE_URL is not configured.",
+        )
+        db.commit()
+        return RedirectResponse(url="/app/portfolio?notice=ocr&status=failed", status_code=303)
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            response = client.post(
+                f"{ocr_url}/ocr/file",
+                files={
+                    "file": (
+                        ocr_file.filename or "document.pdf",
+                        data,
+                        ocr_file.content_type or "application/pdf",
+                    )
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        add_portfolio_import(
+            db,
+            user_id=user_id,
+            source="ocr",
+            status="failed",
+            broker=broker_slug,
+            file_name=ocr_file.filename,
+            file_size_bytes=len(data),
+            error_count=1,
+            message="OCR request failed.",
+        )
+        db.commit()
+        return RedirectResponse(url="/app/portfolio?notice=ocr&status=failed", status_code=303)
+
+    text = payload.get("text") or ""
+    text_excerpt = text[:8000]
+    if len(text) > 8000:
+        text_excerpt = f"{text_excerpt}..."
+
+    add_portfolio_import(
+        db,
+        user_id=user_id,
+        source="ocr",
+        status="completed",
+        broker=broker_slug,
+        file_name=ocr_file.filename,
+        file_size_bytes=len(data),
+        message="OCR extracted text. Review and map to transactions.",
+        raw={
+            "source": payload.get("source"),
+            "stats": payload.get("stats"),
+            "text_excerpt": text_excerpt,
+        },
+    )
+    db.commit()
+
+    return RedirectResponse(url="/app/portfolio?notice=ocr&status=completed", status_code=303)
+
+
+@router.post("/app/portfolio/connect", response_class=HTMLResponse)
+def app_portfolio_connect(
+    request: Request,
+    broker: str = Form(..., max_length=64),
+    account: Optional[str] = Form(default=None, max_length=128),
+    csrf_token: Optional[str] = Form(default=None, max_length=256),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_require_login),
+):
+    _require_csrf(request, csrf_token)
+    broker_slug = normalize_broker_slug(broker)
+    account_value = account.strip() if account else None
+    if not broker_slug or broker_slug not in BROKER_CATALOG:
+        return RedirectResponse(url="/app/portfolio?notice=broker&status=failed", status_code=303)
+
+    upsert_broker_connection(
+        db,
+        user_id=user_id,
+        broker=broker_slug,
+        account=account_value,
+        status="pending",
+        raw={"source": "manual"},
+    )
+    db.commit()
+    return RedirectResponse(
+        url=_build_url(
+            "/app/portfolio",
+            {"notice": "broker", "status": "pending", "broker": broker_label(broker_slug)},
+        ),
+        status_code=303,
+    )
+
+
+@router.post("/app/portfolio/disconnect", response_class=HTMLResponse)
+def app_portfolio_disconnect(
+    request: Request,
+    broker: str = Form(..., max_length=64),
+    account: Optional[str] = Form(default=None, max_length=128),
+    csrf_token: Optional[str] = Form(default=None, max_length=256),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_require_login),
+):
+    _require_csrf(request, csrf_token)
+    broker_slug = normalize_broker_slug(broker)
+    account_value = account.strip() if account else None
+    if not broker_slug:
+        return RedirectResponse(url="/app/portfolio?notice=broker&status=failed", status_code=303)
+
+    upsert_broker_connection(
+        db,
+        user_id=user_id,
+        broker=broker_slug,
+        account=account_value,
+        status="disconnected",
+    )
+    db.commit()
+    return RedirectResponse(
+        url=_build_url(
+            "/app/portfolio",
+            {"notice": "broker", "status": "disconnected", "broker": broker_label(broker_slug)},
+        ),
+        status_code=303,
     )
 
 
