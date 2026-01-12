@@ -81,6 +81,7 @@
             <th class="px-4 py-3">Filed</th>
             <th class="px-4 py-3">Ticker</th>
             <th class="px-4 py-3">Person</th>
+            <th class="px-4 py-3">Company</th>
             <th class="px-4 py-3">Type</th>
             <th class="px-4 py-3">Form</th>
             <th class="px-4 py-3">Amount</th>
@@ -109,6 +110,17 @@
                   <a class="hover:underline" href="/app/people/{{ t.person_slug }}">{{ t.person_name or t.person_slug }}</a>
                 {% else %}
                   {{ t.person_name or "—" }}
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-300">
+                {% if t.company_name %}
+                  {% if t.ticker %}
+                    <a class="hover:underline" href="/app/companies/{{ t.ticker }}">{{ t.company_name }}</a>
+                  {% else %}
+                    {{ t.company_name }}
+                  {% endif %}
+                {% else %}
+                  —
                 {% endif %}
               </td>
               <td class="px-4 py-3 whitespace-nowrap text-slate-300">
@@ -151,7 +163,7 @@
           {% endfor %}
           {% if trades|length == 0 %}
             <tr>
-              <td class="px-4 py-8 text-sm text-slate-400" colspan="9">No trades found.</td>
+              <td class="px-4 py-8 text-sm text-slate-400" colspan="10">No trades found.</td>
             </tr>
           {% endif %}
         </tbody>
