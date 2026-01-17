@@ -9,10 +9,13 @@ import hashlib
 import hmac
 import math
 import re
+import json
+import time
 
 from typing import Any, Optional
 
 import httpx
+import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, status
 from fastapi import UploadFile
 from sqlalchemy import and_, func, or_, select
@@ -24,6 +27,7 @@ from app.forms import FORM_LABELS, FORM_PREFIX_ORDER, form_prefix, normalize_for
 from app.ingest import router as ingest_router
 from app.market_data import MarketDataError, fetch_stooq_daily_prices
 from app.models import (
+    AppleAccount,
     BrokerConnection,
     PersonSummary,
     PortfolioImport,
@@ -86,6 +90,107 @@ def _salt_to_str(salt: bytes) -> str:
 def _salt_from_str(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(value + padding)
+
+
+_APPLE_ISSUER = "https://appleid.apple.com"
+_APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+_APPLE_JWKS_TTL_SECONDS = 3600.0
+_APPLE_JWKS_CACHE: dict[str, dict[str, Any]] = {}
+_APPLE_JWKS_CACHE_TS = 0.0
+
+
+def _apple_placeholder_email(sub: str) -> str:
+    safe = re.sub(r"[^a-z0-9._+-]", "-", sub.lower())
+    if not safe:
+        safe = secrets.token_urlsafe(12).lower()
+    safe = safe[:64]
+    return _normalize_email(f"apple-{safe}@appleid.local")
+
+
+def _apple_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
+    global _APPLE_JWKS_CACHE, _APPLE_JWKS_CACHE_TS
+    now = time.time()
+    if not force_refresh and _APPLE_JWKS_CACHE and now - _APPLE_JWKS_CACHE_TS < _APPLE_JWKS_TTL_SECONDS:
+        return _APPLE_JWKS_CACHE
+    try:
+        response = httpx.get(_APPLE_JWKS_URL, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        if _APPLE_JWKS_CACHE:
+            return _APPLE_JWKS_CACHE
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Apple keys unavailable",
+        ) from exc
+
+    keys = payload.get("keys") if isinstance(payload, dict) else None
+    if not isinstance(keys, list):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Apple keys unavailable",
+        )
+    cache = {
+        key.get("kid"): key
+        for key in keys
+        if isinstance(key, dict) and key.get("kid")
+    }
+    if not cache:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Apple keys unavailable",
+        )
+    _APPLE_JWKS_CACHE = cache
+    _APPLE_JWKS_CACHE_TS = now
+    return cache
+
+
+def _verify_apple_identity_token(token: str, audience: str) -> dict[str, Any]:
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Apple token",
+        ) from exc
+
+    kid = header.get("kid")
+    if not kid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Apple token",
+        )
+
+    jwks = _apple_jwks()
+    jwk = jwks.get(kid)
+    if not jwk:
+        jwks = _apple_jwks(force_refresh=True)
+        jwk = jwks.get(kid)
+    if not jwk:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Apple token",
+        )
+
+    public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(jwk))
+    try:
+        return jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=audience,
+            issuer=_APPLE_ISSUER,
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Apple token expired",
+        ) from exc
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Apple token",
+        ) from exc
 
 
 def _display_tx_type(form: Optional[str], tx_type: Optional[str]) -> str:
@@ -343,6 +448,11 @@ async def api_login(request: Request, db: Session = Depends(get_db)) -> dict[str
             request.session["user"] = "public"
             request.session["csrf"] = secrets.token_urlsafe(32)
         return {"ok": True, "user": "public", "auth_disabled": True}
+    if settings.apple_auth_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Use Sign in with Apple to log in.",
+        )
 
     if "session" not in request.scope:
         raise HTTPException(
@@ -397,6 +507,102 @@ async def api_login(request: Request, db: Session = Depends(get_db)) -> dict[str
     return {"ok": True, "user": "admin"}
 
 
+@router.post("/auth/apple")
+async def api_auth_apple(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+    settings = get_settings()
+    if settings.auth_disabled:
+        if "session" in request.scope:
+            request.session.clear()
+            request.session["user"] = "public"
+            request.session["csrf"] = secrets.token_urlsafe(32)
+        return {"ok": True, "user": "public", "auth_disabled": True}
+    if not settings.apple_audience:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Apple audience not configured",
+        )
+    if "session" not in request.scope:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Session middleware not configured",
+        )
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    identity_token = payload.get("identity_token") or payload.get("identityToken")
+    if not identity_token or not isinstance(identity_token, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Apple identity token required",
+        )
+
+    claims = _verify_apple_identity_token(identity_token, settings.apple_audience)
+    sub = claims.get("sub")
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Apple token",
+        )
+
+    email = (payload.get("email") or claims.get("email") or "").strip()
+    normalized_email = _validate_email(email) if email else None
+
+    account = db.scalar(select(AppleAccount).where(AppleAccount.apple_sub == sub))
+    user = None
+    if account:
+        user = db.scalar(select(User).where(User.id == account.user_id))
+    if not user and normalized_email:
+        user = db.scalar(select(User).where(User.email == normalized_email))
+
+    if not user:
+        user_email = normalized_email or _apple_placeholder_email(sub)
+        salt = _new_salt()
+        password = secrets.token_urlsafe(32)
+        user = User(
+            email=user_email,
+            password_salt=_salt_to_str(salt),
+            password_hash=_hash_password(password, salt),
+        )
+        db.add(user)
+        db.flush()
+
+    if account is None:
+        account = AppleAccount(
+            user_id=user.id,
+            apple_sub=sub,
+            email=normalized_email or email or None,
+        )
+        db.add(account)
+    elif account.user_id != user.id:
+        account.user_id = user.id
+
+    if normalized_email:
+        account.email = normalized_email
+        if user.email != normalized_email:
+            existing = db.scalar(select(User).where(User.email == normalized_email))
+            if existing is None or existing.id == user.id:
+                user.email = normalized_email
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unable to create account.",
+        ) from None
+
+    request.session.clear()
+    request.session["user"] = user.email
+    request.session["csrf"] = secrets.token_urlsafe(32)
+    return {"ok": True, "user": user.email}
+
+
 @router.post("/logout")
 def api_logout(request: Request) -> dict[str, bool]:
     if "session" in request.scope:
@@ -413,6 +619,11 @@ async def api_signup(request: Request, db: Session = Depends(get_db)) -> dict[st
             request.session["user"] = "public"
             request.session["csrf"] = secrets.token_urlsafe(32)
         return {"ok": True, "user": "public", "auth_disabled": True}
+    if settings.apple_auth_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Use Sign in with Apple to sign up.",
+        )
 
     if "session" not in request.scope:
         raise HTTPException(

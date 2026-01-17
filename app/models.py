@@ -32,6 +32,22 @@ class User(Base):
     )
 
 
+class AppleAccount(Base):
+    __tablename__ = "apple_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    apple_sub: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    email: Mapped[Optional[str]] = mapped_column(String(320))
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
 class Subscriber(Base):
     __tablename__ = "subscribers"
 

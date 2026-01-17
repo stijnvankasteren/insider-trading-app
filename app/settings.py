@@ -68,6 +68,8 @@ class Settings:
     ingest_secrets: tuple[str, ...]
     public_base_url: str
     auth_disabled: bool
+    apple_auth_only: bool
+    apple_audience: str
     app_password: str
     session_secret: str
     cookie_secure: bool
@@ -137,6 +139,8 @@ def get_settings() -> Settings:
         ingest_secrets=tuple(ingest_secrets),
         public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000"),
         auth_disabled=_env_bool("AUTH_DISABLED", True),
+        apple_auth_only=_env_bool("APPLE_AUTH_ONLY", False),
+        apple_audience=os.environ.get("APPLE_AUDIENCE", "").strip(),
         app_password=os.environ.get("APP_PASSWORD", ""),
         session_secret=os.environ.get("SESSION_SECRET", ""),
         cookie_secure=_env_bool("COOKIE_SECURE", False),

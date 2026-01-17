@@ -26,6 +26,8 @@ services:
       - INGEST_SECRET
       - PUBLIC_BASE_URL
       - AUTH_DISABLED
+      - APPLE_AUTH_ONLY
+      - APPLE_AUDIENCE
       - APP_PASSWORD
       - SESSION_SECRET
       - COOKIE_SECURE

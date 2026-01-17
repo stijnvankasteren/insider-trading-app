@@ -1,5 +1,7 @@
 import UIKit
 import SwiftUI
+import StoreKit
+import AuthenticationServices
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -116,6 +118,7 @@ struct AppScreenBackground: View {
 
 struct AppRootView: View {
     @StateObject private var session = AppSession()
+    @StateObject private var subscription = SubscriptionManager()
 
     var body: some View {
         ZStack {
@@ -125,6 +128,7 @@ struct AppRootView: View {
             } else if session.isAuthenticated {
                 MainTabView()
                     .environmentObject(session)
+                    .environmentObject(subscription)
             } else {
                 LoginView()
                     .environmentObject(session)
@@ -132,6 +136,7 @@ struct AppRootView: View {
         }
         .task {
             await session.refresh()
+            await subscription.refresh()
         }
     }
 }
@@ -179,12 +184,12 @@ final class AppSession: ObservableObject {
         }
     }
 
-    func login(email: String, password: String) async -> Bool {
+    func loginWithApple(identityToken: String, email: String?, fullName: String?) async -> Bool {
         lastError = nil
         do {
-            let payload = LoginRequest(email: email.isEmpty ? nil : email, password: password)
-            let response: LoginResponse = try await APIClient.shared.request(
-                "api/login",
+            let payload = AppleAuthRequest(identityToken: identityToken, email: email, fullName: fullName)
+            let response: AppleAuthResponse = try await APIClient.shared.request(
+                "api/auth/apple",
                 method: "POST",
                 body: payload
             )
@@ -196,7 +201,7 @@ final class AppSession: ObservableObject {
             lastError = error.message
             return false
         } catch {
-            lastError = "Login failed."
+            lastError = "Apple login failed."
             return false
         }
     }
@@ -212,6 +217,94 @@ final class AppSession: ObservableObject {
         }
         user = nil
         isAuthenticated = false
+    }
+}
+
+@MainActor
+final class SubscriptionManager: ObservableObject {
+    @Published var products: [Product] = []
+    @Published var isSubscribed = false
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    private let productIDs = [
+        "com.aiinsidertrading.pro.monthly",
+        "com.aiinsidertrading.pro.yearly"
+    ]
+
+    func refresh() async {
+        await loadProducts()
+        await refreshEntitlements()
+    }
+
+    func loadProducts() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            products = try await Product.products(for: productIDs)
+            errorMessage = nil
+        } catch {
+            errorMessage = "Unable to load subscriptions."
+        }
+    }
+
+    func purchase(_ product: Product) async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let result = try await product.purchase()
+            switch result {
+            case .success(let verification):
+                let transaction = try checkVerified(verification)
+                await transaction.finish()
+                await refreshEntitlements()
+            case .userCancelled:
+                break
+            case .pending:
+                errorMessage = "Purchase pending approval."
+            @unknown default:
+                errorMessage = "Purchase failed."
+            }
+        } catch {
+            errorMessage = "Purchase failed."
+        }
+    }
+
+    func restore() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await AppStore.sync()
+            await refreshEntitlements()
+        } catch {
+            errorMessage = "Restore failed."
+        }
+    }
+
+    func refreshEntitlements() async {
+        var activeIDs: Set<String> = []
+        for await result in Transaction.currentEntitlements {
+            do {
+                let transaction = try checkVerified(result)
+                if productIDs.contains(transaction.productID) {
+                    activeIDs.insert(transaction.productID)
+                }
+            } catch {
+                continue
+            }
+        }
+        isSubscribed = !activeIDs.isEmpty
+    }
+
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .verified(let safe):
+            return safe
+        case .unverified:
+            throw APIError(message: "Unverified transaction.")
+        }
     }
 }
 
@@ -318,12 +411,13 @@ struct MeResponse: Decodable {
     let user: String?
 }
 
-struct LoginRequest: Encodable {
+struct AppleAuthRequest: Encodable {
+    let identityToken: String
     let email: String?
-    let password: String
+    let fullName: String?
 }
 
-struct LoginResponse: Decodable {
+struct AppleAuthResponse: Decodable {
     let ok: Bool
     let user: String?
     let authDisabled: Bool?
@@ -629,11 +723,14 @@ enum AppTab: String, CaseIterable {
 
 struct MainTabView: View {
     @State private var selection: AppTab = .dashboard
+    @EnvironmentObject private var subscription: SubscriptionManager
 
     var body: some View {
         TabView(selection: $selection) {
             NavigationView {
-                DashboardView()
+                SubscriptionGateView(requiresSubscription: false) {
+                    DashboardView()
+                }
             }
             .tabItem {
                 Label("Dashboard", systemImage: "house.fill")
@@ -641,7 +738,9 @@ struct MainTabView: View {
             .tag(AppTab.dashboard)
 
             NavigationView {
-                NewsView()
+                SubscriptionGateView(requiresSubscription: true) {
+                    NewsView()
+                }
             }
             .tabItem {
                 Label("Laatste nieuws", systemImage: "newspaper.fill")
@@ -649,7 +748,9 @@ struct MainTabView: View {
             .tag(AppTab.news)
 
             NavigationView {
-                TradesView()
+                SubscriptionGateView(requiresSubscription: true) {
+                    TradesView()
+                }
             }
             .tabItem {
                 Label("Transacties", systemImage: "chart.line.uptrend.xyaxis")
@@ -657,7 +758,9 @@ struct MainTabView: View {
             .tag(AppTab.trades)
 
             NavigationView {
-                BriefingView()
+                SubscriptionGateView(requiresSubscription: true) {
+                    BriefingView()
+                }
             }
             .tabItem {
                 Label("Briefing", systemImage: "clock.arrow.circlepath")
@@ -665,7 +768,9 @@ struct MainTabView: View {
             .tag(AppTab.briefing)
 
             NavigationView {
-                AccountView()
+                SubscriptionGateView(requiresSubscription: false) {
+                    AccountView()
+                }
             }
             .tabItem {
                 Label("Account", systemImage: "person.crop.circle")
@@ -673,6 +778,193 @@ struct MainTabView: View {
             .tag(AppTab.account)
         }
         .accentColor(AppColors.accent)
+    }
+}
+
+struct SubscriptionGateView<Content: View>: View {
+    @EnvironmentObject private var subscription: SubscriptionManager
+    let requiresSubscription: Bool
+    let content: () -> Content
+
+    init(requiresSubscription: Bool, @ViewBuilder content: @escaping () -> Content) {
+        self.requiresSubscription = requiresSubscription
+        self.content = content
+    }
+
+    var body: some View {
+        if !requiresSubscription || subscription.isSubscribed {
+            content()
+        } else {
+            PaywallView()
+        }
+    }
+}
+
+struct PaywallView: View {
+    @EnvironmentObject private var subscription: SubscriptionManager
+
+    var body: some View {
+        ZStack {
+            AppScreenBackground()
+            ScrollView {
+                PaywallContent(inline: false)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 24)
+            }
+        }
+        .navigationBarHidden(true)
+        .task {
+            if subscription.products.isEmpty {
+                await subscription.loadProducts()
+            }
+        }
+    }
+}
+
+struct PaywallContent: View {
+    @EnvironmentObject private var subscription: SubscriptionManager
+    let inline: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: inline ? 16 : 22) {
+            if !inline {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Upgrade to Pro")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(AppColors.textPrimary)
+                    Text("Unlock all trades, real-time alerts, and portfolio insights.")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppColors.textSecondary)
+                }
+            } else {
+                Text("Nu abonneren")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppColors.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SubscriptionFeatureRow(text: "Full access to politician trades")
+                SubscriptionFeatureRow(text: "Real-time notifications")
+                SubscriptionFeatureRow(text: "Performance analytics")
+                SubscriptionFeatureRow(text: "Portfolio insights")
+            }
+
+            if subscription.isLoading && subscription.products.isEmpty {
+                LoadingCard()
+            } else if subscription.products.isEmpty {
+                Text("Subscriptions are not configured yet.")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppColors.textMuted)
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(subscription.products, id: \.id) { product in
+                        SubscriptionProductCard(product: product)
+                    }
+                }
+            }
+
+            if let error = subscription.errorMessage {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundColor(AppColors.danger)
+            }
+
+            Button {
+                Task { await subscription.restore() }
+            } label: {
+                Text("Restore purchases")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppColors.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppColors.cardBorder, lineWidth: 1)
+                    )
+            }
+        }
+    }
+}
+
+struct SubscriptionProductCard: View {
+    @EnvironmentObject private var subscription: SubscriptionManager
+    let product: Product
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(product.displayName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppColors.textPrimary)
+                    if let periodText = periodText {
+                        Text(periodText)
+                            .font(.system(size: 12))
+                            .foregroundColor(AppColors.textMuted)
+                    }
+                }
+                Spacer()
+                Text(product.displayPrice)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(AppColors.accent)
+            }
+
+            Button {
+                Task { await subscription.purchase(product) }
+            } label: {
+                Text("Subscribe")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(AppColors.accent)
+                    .cornerRadius(12)
+            }
+        }
+        .padding(14)
+        .background(AppColors.card)
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private var periodText: String? {
+        guard let period = product.subscription?.subscriptionPeriod else { return nil }
+        let unit: String
+        switch period.unit {
+        case .day:
+            unit = "day"
+        case .week:
+            unit = "week"
+        case .month:
+            unit = "month"
+        case .year:
+            unit = "year"
+        @unknown default:
+            unit = "period"
+        }
+        let value = period.value
+        if value == 1 {
+            return "per \(unit)"
+        }
+        return "per \(value) \(unit)s"
+    }
+}
+
+struct SubscriptionFeatureRow: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(AppColors.accent)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundColor(AppColors.textSecondary)
+        }
     }
 }
 
@@ -809,24 +1101,26 @@ struct NewsView: View {
     @State private var isLoading = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Laatste nieuws")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(AppColors.textPrimary)
+        ZStack {
+            AppScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Laatste nieuws")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(AppColors.textPrimary)
 
-                if isLoading && items.isEmpty {
-                    LoadingCard()
-                } else {
-                    ForEach(items) { item in
-                        NewsCardView(card: item)
+                    if isLoading && items.isEmpty {
+                        LoadingCard()
+                    } else {
+                        ForEach(items) { item in
+                            NewsCardView(card: item)
+                        }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
-        .background(AppColors.background)
         .navigationTitle("")
         .navigationBarHidden(true)
         .task {
@@ -966,50 +1260,56 @@ struct BriefingView: View {
     @State private var isLoading = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Briefing")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(AppColors.textPrimary)
+        ZStack {
+            AppScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Briefing")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(AppColors.textPrimary)
 
-                if isLoading {
-                    LoadingCard()
-                } else if let watchlist = watchlist {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Watchlist")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(AppColors.textPrimary)
+                    if isLoading {
+                        LoadingCard()
+                    } else if let watchlist = watchlist {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Watchlist")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(AppColors.textPrimary)
 
-                        ForEach(watchlist.items.prefix(5)) { item in
-                            HStack {
-                                Text(item.label ?? item.value)
-                                    .foregroundColor(AppColors.textSecondary)
-                                Spacer()
-                                Text(item.kind.uppercased())
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(AppColors.accent)
+                            ForEach(watchlist.items.prefix(5)) { item in
+                                HStack {
+                                    Text(item.label ?? item.value)
+                                        .foregroundColor(AppColors.textSecondary)
+                                    Spacer()
+                                    Text(item.kind.uppercased())
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(AppColors.accent)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(AppColors.card)
+                                .cornerRadius(14)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(AppColors.cardBorder, lineWidth: 1)
+                                )
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(AppColors.card)
-                            .cornerRadius(14)
                         }
-                    }
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Laatste signalen")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(AppColors.textPrimary)
-                        ForEach(watchlist.trades.prefix(5)) { trade in
-                            TradeCardView(trade: trade)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Laatste signalen")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(AppColors.textPrimary)
+                            ForEach(watchlist.trades.prefix(5)) { trade in
+                                TradeCardView(trade: trade)
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
-        .background(AppColors.background)
         .navigationBarHidden(true)
         .task {
             await loadWatchlist()
@@ -1035,69 +1335,80 @@ struct AccountView: View {
     @State private var settings: SettingsResponse?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(AppColors.cardSoft)
-                        .frame(width: 56, height: 56)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .foregroundColor(AppColors.textPrimary)
-                        )
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(session.user ?? "Account")
+        ZStack {
+            AppScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Account")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(AppColors.textPrimary)
+
+                    AppCard {
+                        HStack(spacing: 14) {
+                            Circle()
+                                .fill(AppColors.cardSoft)
+                                .frame(width: 56, height: 56)
+                                .overlay(
+                                    Image(systemName: "person.fill")
+                                        .foregroundColor(AppColors.textPrimary)
+                                )
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(session.user ?? "Account")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(AppColors.textPrimary)
+                                Text("Premium member")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AppColors.textSecondary)
+                            }
+                            Spacer()
+                        }
+                    }
+
+                    SettingsCard()
+
+                    SubscriptionCard()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Tools")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(AppColors.textPrimary)
-                        Text("Premium member")
-                            .font(.system(size: 12))
-                            .foregroundColor(AppColors.textSecondary)
+
+                        NavigationLink(destination: PeopleListView()) {
+                            ToolRow(title: "People", icon: "person.3.fill")
+                        }
+                        NavigationLink(destination: FormsHubView()) {
+                            ToolRow(title: "Forms", icon: "doc.text.fill")
+                        }
+                        NavigationLink(destination: PortfolioView()) {
+                            ToolRow(title: "Portfolio", icon: "chart.pie.fill")
+                        }
+                        NavigationLink(destination: PricesView()) {
+                            ToolRow(title: "Prices", icon: "waveform.path.ecg")
+                        }
+                        NavigationLink(destination: WatchlistView()) {
+                            ToolRow(title: "Watchlist", icon: "star.fill")
+                        }
                     }
-                    Spacer()
+
+                    Button {
+                        Task { await session.logout() }
+                    } label: {
+                        Text("Logout")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppColors.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.clear)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(AppColors.cardBorder, lineWidth: 1)
+                            )
+                    }
                 }
-
-                SettingsCard()
-
-                SubscriptionCard()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Tools")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(AppColors.textPrimary)
-
-                    NavigationLink(destination: PeopleListView()) {
-                        ToolRow(title: "People", icon: "person.3.fill")
-                    }
-                    NavigationLink(destination: FormsHubView()) {
-                        ToolRow(title: "Forms", icon: "doc.text.fill")
-                    }
-                    NavigationLink(destination: PortfolioView()) {
-                        ToolRow(title: "Portfolio", icon: "chart.pie.fill")
-                    }
-                    NavigationLink(destination: PricesView()) {
-                        ToolRow(title: "Prices", icon: "waveform.path.ecg")
-                    }
-                    NavigationLink(destination: WatchlistView()) {
-                        ToolRow(title: "Watchlist", icon: "star.fill")
-                    }
-                }
-
-                Button {
-                    Task { await session.logout() }
-                } label: {
-                    Text("Logout")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppColors.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(AppColors.card)
-                        .cornerRadius(14)
-                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
-        .background(AppColors.background)
         .navigationBarHidden(true)
         .task {
             await loadSettings()
@@ -1111,67 +1422,119 @@ struct AccountView: View {
 
 struct LoginView: View {
     @EnvironmentObject private var session: AppSession
-    @State private var email = ""
-    @State private var password = ""
     @State private var isSubmitting = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            AppLogoMark()
+        ScrollView {
+            VStack(spacing: 24) {
+                VStack(spacing: 6) {
+                    Text("Wolf of Washington")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(AppColors.textPrimary)
+                    Text("Volg het geld in de politiek")
+                        .font(.system(size: 16))
+                        .foregroundColor(AppColors.textSecondary)
+                }
                 .padding(.top, 40)
 
-            Text("Log in om verder te gaan")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(AppColors.textPrimary)
-
-            VStack(spacing: 12) {
-                TextField("Email", text: $email)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
-                    .padding(14)
-                    .background(AppColors.card)
-                    .cornerRadius(12)
+                Text("Inloggen")
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(AppColors.textPrimary)
 
-                SecureField("Wachtwoord", text: $password)
-                    .padding(14)
-                    .background(AppColors.card)
-                    .cornerRadius(12)
-                    .foregroundColor(AppColors.textPrimary)
-            }
+                Text("Log in met je Apple ID om verder te gaan.")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppColors.textMuted)
+                    .multilineTextAlignment(.center)
 
-            if let error = session.lastError {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundColor(AppColors.danger)
-            }
+                if let error = session.lastError {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundColor(AppColors.danger)
+                }
 
-            Button {
-                Task { await submitLogin() }
-            } label: {
-                HStack {
+                HStack(spacing: 12) {
+                    Rectangle()
+                        .fill(AppColors.divider)
+                        .frame(height: 1)
+                    Text("Of inloggen met")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppColors.textMuted)
+                    Rectangle()
+                        .fill(AppColors.divider)
+                        .frame(height: 1)
+                }
+
+                ZStack {
+                    SignInWithAppleButton(.signIn, onRequest: { request in
+                        request.requestedScopes = [.fullName, .email]
+                    }, onCompletion: { result in
+                        handleAppleResult(result)
+                    })
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+
                     if isSubmitting {
                         ProgressView()
-                            .tint(.black)
+                            .tint(.white)
                     }
-                    Text("Login")
-                        .font(.system(size: 15, weight: .semibold))
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(AppColors.accentStrong)
-                .cornerRadius(14)
-                .foregroundColor(.black)
+                .disabled(isSubmitting)
+
+                HStack(spacing: 6) {
+                    Text("Heb je nog geen account?")
+                        .foregroundColor(AppColors.textSecondary)
+                    Text("Registreren")
+                        .foregroundColor(AppColors.accent)
+                }
+                .font(.system(size: 14, weight: .semibold))
             }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 40)
         }
-        .padding(.horizontal, 28)
     }
 
-    private func submitLogin() async {
-        guard !password.isEmpty else { return }
+    private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                session.lastError = "Apple login failed."
+                return
+            }
+            submitAppleCredential(credential)
+        case .failure(let error):
+            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                session.lastError = nil
+                return
+            }
+            session.lastError = "Apple login failed."
+        }
+    }
+
+    private func submitAppleCredential(_ credential: ASAuthorizationAppleIDCredential) {
+        guard let tokenData = credential.identityToken,
+              let identityToken = String(data: tokenData, encoding: .utf8)
+        else {
+            session.lastError = "Apple login failed."
+            return
+        }
+
+        let fullName = credential.fullName.flatMap { components -> String? in
+            let formatter = PersonNameComponentsFormatter()
+            let formatted = formatter.string(from: components).trimmingCharacters(in: .whitespacesAndNewlines)
+            return formatted.isEmpty ? nil : formatted
+        }
+
+        session.lastError = nil
         isSubmitting = true
-        defer { isSubmitting = false }
-        _ = await session.login(email: email, password: password)
+        Task {
+            defer { isSubmitting = false }
+            _ = await session.loginWithApple(
+                identityToken: identityToken,
+                email: credential.email,
+                fullName: fullName
+            )
+        }
     }
 }
 
@@ -1179,11 +1542,11 @@ struct TradeCardView: View {
     let trade: Trade
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(trade.displayTicker)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(AppColors.textPrimary)
                     Text(trade.displayCompany)
                         .font(.system(size: 12))
@@ -1192,6 +1555,8 @@ struct TradeCardView: View {
                 Spacer()
                 BuySellBadge(label: trade.buySellLabel, isBuy: trade.isBuy)
             }
+
+            AppDivider()
 
             HStack(spacing: 12) {
                 Circle()
@@ -1224,10 +1589,56 @@ struct TradeCardView: View {
             }
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppColors.card)
+        .background(AppColors.card)
+        .cornerRadius(18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
         )
+    }
+}
+
+struct PreviewRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(AppColors.textMuted)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppColors.textPrimary)
+        }
+    }
+}
+
+struct AppDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(AppColors.cardBorder.opacity(0.6))
+            .frame(height: 1)
+    }
+}
+
+struct AppActionButton: View {
+    let title: String
+    let filled: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(filled ? .black : AppColors.textPrimary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(filled ? AppColors.accent : Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppColors.cardBorder, lineWidth: 1)
+            )
+            .cornerRadius(12)
     }
 }
 
@@ -1301,6 +1712,10 @@ struct NewsCardView: View {
         .padding(16)
         .background(AppColors.card)
         .cornerRadius(18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1317,6 +1732,10 @@ struct SettingsCard: View {
         .padding(16)
         .background(AppColors.card)
         .cornerRadius(18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1384,7 +1803,7 @@ struct SubscriptionCard: View {
                 }
             }
             .padding(14)
-            .background(Color.black)
+            .background(AppColors.cardHighlight)
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
@@ -1394,6 +1813,10 @@ struct SubscriptionCard: View {
         .padding(16)
         .background(AppColors.card)
         .cornerRadius(18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1429,6 +1852,10 @@ struct ToolRow: View {
         .padding(12)
         .background(AppColors.card)
         .cornerRadius(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1472,6 +1899,10 @@ struct SearchBar: View {
         .padding(12)
         .background(AppColors.card)
         .cornerRadius(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1489,7 +1920,14 @@ struct FilterPills: View {
                         .foregroundColor(selected == filter ? .black : AppColors.textSecondary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(selected == filter ? AppColors.accent : AppColors.card)
+                        .background(selected == filter ? AppColors.accent : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(
+                                    selected == filter ? AppColors.accent : AppColors.cardBorder,
+                                    lineWidth: 1
+                                )
+                        )
                         .cornerRadius(16)
                 }
             }
@@ -1529,6 +1967,10 @@ struct StatCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppColors.card)
         .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1545,6 +1987,10 @@ struct LoadingCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppColors.card)
         .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1559,6 +2005,10 @@ struct ErrorCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AppColors.card)
             .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppColors.cardBorder, lineWidth: 1)
+            )
     }
 }
 
@@ -1984,5 +2434,9 @@ struct AppCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AppColors.card)
             .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppColors.cardBorder, lineWidth: 1)
+            )
     }
 }
