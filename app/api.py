@@ -295,6 +295,31 @@ def _serialize_portfolio_import(item: PortfolioImport) -> dict[str, Any]:
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
 
+
+def _require_api_login(request: Request) -> None:
+    settings = get_settings()
+    if settings.auth_disabled:
+        return
+    if "session" not in request.scope:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Session middleware not configured",
+        )
+    if not request.session.get("user"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Login required",
+        )
+
+
+def _get_user_id(request: Request) -> str:
+    if "session" in request.scope:
+        user = request.session.get("user")
+        if user:
+            return str(user)
+    return "public"
+
+
 @router.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
@@ -1117,30 +1142,6 @@ def api_settings(
         "auth_disabled": settings.auth_disabled,
         "web_ui_enabled": settings.web_ui_enabled,
     }
-
-
-def _require_api_login(request: Request) -> None:
-    settings = get_settings()
-    if settings.auth_disabled:
-        return
-    if "session" not in request.scope:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Session middleware not configured",
-        )
-    if not request.session.get("user"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Login required",
-        )
-
-
-def _get_user_id(request: Request) -> str:
-    if "session" in request.scope:
-        user = request.session.get("user")
-        if user:
-            return str(user)
-    return "public"
 
 
 @router.get("/trades")
