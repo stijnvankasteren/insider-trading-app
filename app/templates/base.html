@@ -8,7 +8,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/site.css" />
   </head>
-  <body class="min-h-screen bg-slate-950 text-slate-100">
+  <body class="min-h-screen bg-slate-950 text-slate-100 sm:overflow-hidden">
+    <div
+      id="phone-only-overlay"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/95 px-6 text-center sm:flex"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Alleen op telefoon</p>
+        <h1 class="mt-3 text-2xl font-semibold">Gebruik deze app op je telefoon</h1>
+        <p class="mt-2 text-sm text-slate-300">Open de app op je smartphone om verder te gaan.</p>
+      </div>
+    </div>
     {% set path = request.url.path %}
     {% set app_menu_active = path == '/app'
       or path.startswith('/app/search')
@@ -162,6 +172,29 @@
       </div>
     </header>
 
+    <div id="install-banner" class="sm:hidden">
+      <div
+        class="mx-auto mb-6 flex max-w-6xl items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-200"
+      >
+        <div class="flex-1">
+          <p class="font-semibold">Zet deze app op je beginscherm</p>
+          <p class="mt-1 text-slate-400" data-platform="ios">
+            iPhone: tik op Deel en kies "Zet op beginscherm".
+          </p>
+          <p class="mt-1 text-slate-400" data-platform="android">
+            Android: open het menu en kies "App installeren" of "Toevoegen aan startscherm".
+          </p>
+        </div>
+        <button
+          id="install-banner-close"
+          class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-slate-500 hover:text-white"
+          type="button"
+        >
+          Sluiten
+        </button>
+      </div>
+    </div>
+
     <main class="mx-auto max-w-6xl px-4 py-10">
       {% block content %}{% endblock %}
     </main>
@@ -172,5 +205,61 @@
         <a class="hover:text-slate-300" href="/legal/terms">Terms</a>
       </div>
     </footer>
+
+    <script>
+      (function () {
+        var banner = document.getElementById("install-banner");
+        if (!banner) {
+          return;
+        }
+
+        var closeButton = document.getElementById("install-banner-close");
+        var dismissedKey = "installBannerDismissed";
+        var mediaStandalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+        var mediaFullscreen = window.matchMedia && window.matchMedia("(display-mode: fullscreen)").matches;
+        var isStandalone = Boolean(window.navigator.standalone || mediaStandalone || mediaFullscreen);
+        var isSmallScreen = window.matchMedia && window.matchMedia("(max-width: 639px)").matches;
+
+        if (!isSmallScreen || isStandalone) {
+          banner.classList.add("hidden");
+          return;
+        }
+
+        try {
+          if (window.localStorage && window.localStorage.getItem(dismissedKey) === "1") {
+            banner.classList.add("hidden");
+            return;
+          }
+        } catch (err) {
+          // Ignore storage errors.
+        }
+
+        var userAgent = window.navigator.userAgent || "";
+        var isIOS = /iphone|ipad|ipod/i.test(userAgent);
+        var iosText = banner.querySelector("[data-platform='ios']");
+        var androidText = banner.querySelector("[data-platform='android']");
+
+        if (iosText && androidText) {
+          if (isIOS) {
+            androidText.classList.add("hidden");
+          } else {
+            iosText.classList.add("hidden");
+          }
+        }
+
+        if (closeButton) {
+          closeButton.addEventListener("click", function () {
+            banner.classList.add("hidden");
+            try {
+              if (window.localStorage) {
+                window.localStorage.setItem(dismissedKey, "1");
+              }
+            } catch (err) {
+              // Ignore storage errors.
+            }
+          });
+        }
+      })();
+    </script>
   </body>
 </html>
