@@ -1,7 +1,6 @@
 import UIKit
 import SwiftUI
 import StoreKit
-import AuthenticationServices
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -73,8 +72,8 @@ enum AppColors {
     static let cardSoft = Color(red: 0.12, green: 0.12, blue: 0.12)
     static let cardHighlight = Color(red: 0.13, green: 0.14, blue: 0.18)
     static let cardBorder = Color(red: 0.18, green: 0.2, blue: 0.28)
-    static let accent = Color(red: 0.82, green: 0.68, blue: 0.2)
-    static let accentStrong = Color(red: 0.9, green: 0.75, blue: 0.2)
+    static let accent = Color(red: 0.23, green: 0.52, blue: 0.96)
+    static let accentStrong = Color(red: 0.33, green: 0.62, blue: 1.0)
     static let textPrimary = Color.white
     static let textSecondary = Color(red: 0.72, green: 0.72, blue: 0.72)
     static let textMuted = Color(red: 0.55, green: 0.55, blue: 0.55)
@@ -83,7 +82,7 @@ enum AppColors {
     static let divider = Color(red: 0.18, green: 0.18, blue: 0.18)
 
     static var accentUIColor: UIColor {
-        UIColor(red: 0.82, green: 0.68, blue: 0.2, alpha: 1.0)
+        UIColor(red: 0.23, green: 0.52, blue: 0.96, alpha: 1.0)
     }
 }
 
@@ -118,7 +117,6 @@ struct AppScreenBackground: View {
 
 struct AppRootView: View {
     @StateObject private var session = AppSession()
-    @StateObject private var subscription = SubscriptionManager()
 
     var body: some View {
         ZStack {
@@ -128,7 +126,6 @@ struct AppRootView: View {
             } else if session.isAuthenticated {
                 MainTabView()
                     .environmentObject(session)
-                    .environmentObject(subscription)
             } else {
                 LoginView()
                     .environmentObject(session)
@@ -136,7 +133,6 @@ struct AppRootView: View {
         }
         .task {
             await session.refresh()
-            await subscription.refresh()
         }
     }
 }
@@ -152,10 +148,10 @@ struct SplashView: View {
                     .font(.system(size: 32, weight: .bold))
                     .foregroundColor(AppColors.accent)
             }
-            Text("Wolf of Washington")
+            Text("AltData")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(AppColors.textPrimary)
-            Text("Loading market signals...")
+            Text("Loading market data...")
                 .font(.system(size: 14))
                 .foregroundColor(AppColors.textMuted)
         }
@@ -184,12 +180,16 @@ final class AppSession: ObservableObject {
         }
     }
 
-    func loginWithApple(identityToken: String, email: String?, fullName: String?) async -> Bool {
+    func login(fullName: String, email: String, password: String) async -> Bool {
         lastError = nil
         do {
-            let payload = AppleAuthRequest(identityToken: identityToken, email: email, fullName: fullName)
-            let response: AppleAuthResponse = try await APIClient.shared.request(
-                "api/auth/apple",
+            let payload = LoginRequest(
+                fullName: fullName.isEmpty ? nil : fullName,
+                email: email,
+                password: password
+            )
+            let response: LoginResponse = try await APIClient.shared.request(
+                "api/login",
                 method: "POST",
                 body: payload
             )
@@ -201,7 +201,34 @@ final class AppSession: ObservableObject {
             lastError = error.message
             return false
         } catch {
-            lastError = "Apple login failed."
+            lastError = "Login failed."
+            return false
+        }
+    }
+
+    func signup(fullName: String, email: String, password: String, confirm: String) async -> Bool {
+        lastError = nil
+        do {
+            let payload = SignupRequest(
+                fullName: fullName.isEmpty ? nil : fullName,
+                email: email,
+                password: password,
+                passwordConfirm: confirm
+            )
+            let response: SignupResponse = try await APIClient.shared.request(
+                "api/signup",
+                method: "POST",
+                body: payload
+            )
+            user = response.user
+            authDisabled = response.authDisabled ?? false
+            isAuthenticated = true
+            return true
+        } catch let error as APIError {
+            lastError = error.message
+            return false
+        } catch {
+            lastError = "Signup failed."
             return false
         }
     }
@@ -411,13 +438,26 @@ struct MeResponse: Decodable {
     let user: String?
 }
 
-struct AppleAuthRequest: Encodable {
-    let identityToken: String
-    let email: String?
+struct LoginRequest: Encodable {
     let fullName: String?
+    let email: String
+    let password: String
 }
 
-struct AppleAuthResponse: Decodable {
+struct SignupRequest: Encodable {
+    let fullName: String?
+    let email: String
+    let password: String
+    let passwordConfirm: String
+}
+
+struct LoginResponse: Decodable {
+    let ok: Bool
+    let user: String?
+    let authDisabled: Bool?
+}
+
+struct SignupResponse: Decodable {
     let ok: Bool
     let user: String?
     let authDisabled: Bool?
@@ -723,14 +763,11 @@ enum AppTab: String, CaseIterable {
 
 struct MainTabView: View {
     @State private var selection: AppTab = .dashboard
-    @EnvironmentObject private var subscription: SubscriptionManager
 
     var body: some View {
         TabView(selection: $selection) {
             NavigationView {
-                SubscriptionGateView(requiresSubscription: false) {
-                    DashboardView()
-                }
+                DashboardView()
             }
             .tabItem {
                 Label("Dashboard", systemImage: "house.fill")
@@ -738,9 +775,7 @@ struct MainTabView: View {
             .tag(AppTab.dashboard)
 
             NavigationView {
-                SubscriptionGateView(requiresSubscription: true) {
-                    NewsView()
-                }
+                NewsView()
             }
             .tabItem {
                 Label("Laatste nieuws", systemImage: "newspaper.fill")
@@ -748,9 +783,7 @@ struct MainTabView: View {
             .tag(AppTab.news)
 
             NavigationView {
-                SubscriptionGateView(requiresSubscription: true) {
-                    TradesView()
-                }
+                TradesView()
             }
             .tabItem {
                 Label("Transacties", systemImage: "chart.line.uptrend.xyaxis")
@@ -758,9 +791,7 @@ struct MainTabView: View {
             .tag(AppTab.trades)
 
             NavigationView {
-                SubscriptionGateView(requiresSubscription: true) {
-                    BriefingView()
-                }
+                BriefingView()
             }
             .tabItem {
                 Label("Briefing", systemImage: "clock.arrow.circlepath")
@@ -768,9 +799,7 @@ struct MainTabView: View {
             .tag(AppTab.briefing)
 
             NavigationView {
-                SubscriptionGateView(requiresSubscription: false) {
-                    AccountView()
-                }
+                AccountView()
             }
             .tabItem {
                 Label("Account", systemImage: "person.crop.circle")
@@ -1368,8 +1397,6 @@ struct AccountView: View {
 
                     SettingsCard()
 
-                    SubscriptionCard()
-
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Tools")
                             .font(.system(size: 18, weight: .semibold))
@@ -1424,29 +1451,80 @@ struct AccountView: View {
 
 struct LoginView: View {
     @EnvironmentObject private var session: AppSession
+    @State private var fullName = ""
+    @State private var email = ""
+    @State private var password = ""
+    @State private var passwordConfirm = ""
+    @State private var mode: AuthMode = .login
     @State private var isSubmitting = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 VStack(spacing: 6) {
-                    Text("Wolf of Washington")
+                    Text("AltData")
                         .font(.system(size: 32, weight: .bold))
                         .foregroundColor(AppColors.textPrimary)
-                    Text("Volg het geld in de politiek")
+                    Text("Alternative market data, made usable.")
                         .font(.system(size: 16))
                         .foregroundColor(AppColors.textSecondary)
                 }
                 .padding(.top, 40)
 
-                Text("Inloggen")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(AppColors.textPrimary)
+                Picker("", selection: $mode) {
+                    ForEach(AuthMode.allCases, id: \.self) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal, 2)
 
-                Text("Log in met je Apple ID om verder te gaan.")
-                    .font(.system(size: 14))
-                    .foregroundColor(AppColors.textMuted)
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 12) {
+                    TextField("Naam", text: $fullName)
+                        .textInputAutocapitalization(.words)
+                        .padding(14)
+                        .background(AppColors.card)
+                        .cornerRadius(12)
+                        .foregroundColor(AppColors.textPrimary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppColors.cardBorder, lineWidth: 1)
+                        )
+
+                    TextField("E-mail", text: $email)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .padding(14)
+                        .background(AppColors.card)
+                        .cornerRadius(12)
+                        .foregroundColor(AppColors.textPrimary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppColors.cardBorder, lineWidth: 1)
+                        )
+
+                    SecureField("Wachtwoord", text: $password)
+                        .padding(14)
+                        .background(AppColors.card)
+                        .cornerRadius(12)
+                        .foregroundColor(AppColors.textPrimary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppColors.cardBorder, lineWidth: 1)
+                        )
+
+                    if mode == .signup {
+                        SecureField("Wachtwoord bevestigen", text: $passwordConfirm)
+                            .padding(14)
+                            .background(AppColors.card)
+                            .cornerRadius(12)
+                            .foregroundColor(AppColors.textPrimary)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppColors.cardBorder, lineWidth: 1)
+                            )
+                    }
+                }
 
                 if let error = session.lastError {
                     Text(error)
@@ -1454,90 +1532,49 @@ struct LoginView: View {
                         .foregroundColor(AppColors.danger)
                 }
 
-                HStack(spacing: 12) {
-                    Rectangle()
-                        .fill(AppColors.divider)
-                        .frame(height: 1)
-                    Text("Of inloggen met")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppColors.textMuted)
-                    Rectangle()
-                        .fill(AppColors.divider)
-                        .frame(height: 1)
-                }
-
-                ZStack {
-                    SignInWithAppleButton(.signIn, onRequest: { request in
-                        request.requestedScopes = [.fullName, .email]
-                    }, onCompletion: { result in
-                        handleAppleResult(result)
-                    })
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                    if isSubmitting {
-                        ProgressView()
-                            .tint(.white)
+                Button {
+                    Task { await submitLogin() }
+                } label: {
+                    HStack {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.black)
+                        }
+                        Text(mode == .login ? "Inloggen" : "Account maken")
+                            .font(.system(size: 15, weight: .semibold))
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(AppColors.accentStrong)
+                    .cornerRadius(14)
+                    .foregroundColor(.black)
                 }
-                .disabled(isSubmitting)
-
-                HStack(spacing: 6) {
-                    Text("Heb je nog geen account?")
-                        .foregroundColor(AppColors.textSecondary)
-                    Text("Registreren")
-                        .foregroundColor(AppColors.accent)
-                }
-                .font(.system(size: 14, weight: .semibold))
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 40)
         }
     }
 
-    private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
-        switch result {
-        case .success(let authorization):
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                session.lastError = "Apple login failed."
-                return
-            }
-            submitAppleCredential(credential)
-        case .failure(let error):
-            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
-                session.lastError = nil
-                return
-            }
-            session.lastError = "Apple login failed."
-        }
-    }
-
-    private func submitAppleCredential(_ credential: ASAuthorizationAppleIDCredential) {
-        guard let tokenData = credential.identityToken,
-              let identityToken = String(data: tokenData, encoding: .utf8)
-        else {
-            session.lastError = "Apple login failed."
-            return
-        }
-
-        let fullName = credential.fullName.flatMap { components -> String? in
-            let formatter = PersonNameComponentsFormatter()
-            let formatted = formatter.string(from: components).trimmingCharacters(in: .whitespacesAndNewlines)
-            return formatted.isEmpty ? nil : formatted
-        }
-
-        session.lastError = nil
+    private func submitLogin() async {
+        guard !fullName.isEmpty, !email.isEmpty, !password.isEmpty else { return }
         isSubmitting = true
-        Task {
-            defer { isSubmitting = false }
-            _ = await session.loginWithApple(
-                identityToken: identityToken,
-                email: credential.email,
-                fullName: fullName
+        defer { isSubmitting = false }
+        if mode == .login {
+            _ = await session.login(fullName: fullName, email: email, password: password)
+        } else {
+            _ = await session.signup(
+                fullName: fullName,
+                email: email,
+                password: password,
+                confirm: passwordConfirm
             )
         }
     }
+}
+
+enum AuthMode: String, CaseIterable {
+    case login = "Inloggen"
+    case signup = "Account maken"
 }
 
 struct TradeCardView: View {
@@ -1881,10 +1918,10 @@ struct AppLogoMark: View {
                     .foregroundColor(AppColors.accent)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("Wolf of Washington")
+                Text("AltData")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(AppColors.textPrimary)
-                Text("Insider Trading Intelligence")
+                Text("Alternative market data")
                     .font(.system(size: 12))
                     .foregroundColor(AppColors.textMuted)
             }
