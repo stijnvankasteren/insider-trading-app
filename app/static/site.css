@@ -12,6 +12,10 @@ details > summary::-webkit-details-marker {
 }
 
 @media (max-width: 639px) {
+  html.is-standalone .site-header {
+    display: none !important;
+  }
+
   html.not-standalone .app-only {
     display: none !important;
   }
