@@ -191,7 +191,7 @@ def _policy_for_path(path: str) -> tuple[str, RateLimitPolicy]:
             ),
         )
 
-    if path in {"/login", "/signup", "/subscribe"}:
+    if path in {"/login", "/signup", "/subscribe", "/api/login", "/api/signup", "/api/logout"}:
         return (
             "auth",
             RateLimitPolicy(

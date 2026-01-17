@@ -86,8 +86,9 @@ def create_app() -> FastAPI:
     elif not settings.auth_disabled:
         raise RuntimeError("SESSION_SECRET is required when AUTH_DISABLED=false")
 
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
-    app.include_router(web_router, dependencies=[Depends(rate_limit_dependency)])
+    if settings.web_ui_enabled:
+        app.mount("/static", StaticFiles(directory="app/static"), name="static")
+        app.include_router(web_router, dependencies=[Depends(rate_limit_dependency)])
     app.include_router(api_router, prefix="/api", dependencies=[Depends(rate_limit_dependency)])
 
     return app

@@ -62,6 +62,7 @@ def _env_csv(name: str) -> list[str]:
 class Settings:
     app_name: str
     app_only_mode: bool
+    web_ui_enabled: bool
     database_url: str
     ingest_secret: str
     ingest_secrets: tuple[str, ...]
@@ -130,6 +131,7 @@ def get_settings() -> Settings:
     return Settings(
         app_name=os.environ.get("APP_NAME", "AltData"),
         app_only_mode=_env_bool("APP_ONLY_MODE", False),
+        web_ui_enabled=_env_bool("WEB_UI_ENABLED", True),
         database_url=_database_url(),
         ingest_secret=ingest_secret,
         ingest_secrets=tuple(ingest_secrets),
