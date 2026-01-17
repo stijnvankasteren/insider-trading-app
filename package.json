@@ -1,0 +1,30 @@
+{
+  "name": "insider-trading-app",
+  "version": "1.0.0",
+  "description": "FastAPI + SQLAlchemy webapp that can ingest alternative market data from n8n into a database and render it in a QuiverQuant-like UI (original branding/content).",
+  "main": "index.js",
+  "scripts": {
+    "cap:sync": "npx cap sync",
+    "cap:ios": "npx cap open ios"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stijnvankasteren/insider-trading-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/stijnvankasteren/insider-trading-app/issues"
+  },
+  "homepage": "https://github.com/stijnvankasteren/insider-trading-app#readme",
+  "dependencies": {
+    "@capacitor/cli": "^8.0.1",
+    "@capacitor/core": "^8.0.1",
+    "@capacitor/ios": "^8.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

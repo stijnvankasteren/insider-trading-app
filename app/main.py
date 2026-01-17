@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -25,6 +25,25 @@ def create_app() -> FastAPI:
         yield
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def _app_only_gate(request: Request, call_next):
+        settings = get_settings()
+        if not settings.app_only_mode:
+            return await call_next(request)
+
+        path = request.url.path
+        if path.startswith("/api") or path.startswith("/static") or path.startswith("/legal"):
+            return await call_next(request)
+        if path.startswith("/app/launch"):
+            return await call_next(request)
+
+        has_app_cookie = request.cookies.get("app_client") == "1"
+        has_app_header = request.headers.get("x-app-client") == "1"
+        if has_app_cookie or has_app_header:
+            return await call_next(request)
+
+        return PlainTextResponse("Not found", status_code=404)
 
     @app.exception_handler(RateLimitExceeded)
     async def _rate_limit_exceeded_handler(

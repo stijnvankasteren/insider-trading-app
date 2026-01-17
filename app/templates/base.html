@@ -29,11 +29,24 @@
         if (window.navigator && window.navigator.standalone) {
           isStandalone = true;
         }
+        var isNative = false;
+        if (window.Capacitor && typeof window.Capacitor.isNativePlatform === "function") {
+          isNative = window.Capacitor.isNativePlatform();
+        } else if (window.Capacitor) {
+          isNative = true;
+        }
+        if (isNative) {
+          isStandalone = true;
+          doc.classList.add("is-native");
+        }
         doc.classList.add(isStandalone ? "is-standalone" : "not-standalone");
         if (isMobile) {
           doc.classList.add("is-mobile");
         }
-        window.__appEnv = { isStandalone: isStandalone, isMobile: isMobile };
+        window.__appEnv = { isStandalone: isStandalone, isMobile: isMobile, isNative: isNative };
+        if (isNative) {
+          document.cookie = "app_client=1; path=/; SameSite=Lax";
+        }
       })();
     </script>
   </head>
@@ -226,28 +239,30 @@
       </div>
     </header>
 
-    <div id="install-banner" class="sm:hidden">
-      <div
-        class="mx-auto mb-6 flex max-w-6xl items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-200"
-      >
-        <div class="flex-1">
-          <p class="font-semibold">Zet deze app op je beginscherm</p>
-          <p class="mt-1 text-slate-400" data-platform="ios">
-            iPhone: tik op Deel en kies "Zet op beginscherm".
-          </p>
-          <p class="mt-1 text-slate-400" data-platform="android">
-            Android: open het menu en kies "App installeren" of "Toevoegen aan startscherm".
-          </p>
-        </div>
-        <button
-          id="install-banner-close"
-          class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-slate-500 hover:text-white"
-          type="button"
+    {% if not app_only_mode %}
+      <div id="install-banner" class="sm:hidden">
+        <div
+          class="mx-auto mb-6 flex max-w-6xl items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-200"
         >
-          Sluiten
-        </button>
+          <div class="flex-1">
+            <p class="font-semibold">Zet deze app op je beginscherm</p>
+            <p class="mt-1 text-slate-400" data-platform="ios">
+              iPhone: tik op Deel en kies "Zet op beginscherm".
+            </p>
+            <p class="mt-1 text-slate-400" data-platform="android">
+              Android: open het menu en kies "App installeren" of "Toevoegen aan startscherm".
+            </p>
+          </div>
+          <button
+            id="install-banner-close"
+            class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-slate-500 hover:text-white"
+            type="button"
+          >
+            Sluiten
+          </button>
+        </div>
       </div>
-    </div>
+    {% endif %}
 
     <main class="mx-auto max-w-6xl px-4 py-10 pb-28 sm:pb-10">
       {% block content %}{% endblock %}
@@ -351,70 +366,72 @@
       </div>
     </nav>
 
-    <nav
-      id="bottom-nav-info"
-      class="browser-only fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur sm:hidden"
-    >
-      <div
-        class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2"
+    {% if not app_only_mode %}
+      <nav
+        id="bottom-nav-info"
+        class="browser-only fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur sm:hidden"
       >
-        <a
-          class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if home_active else 'text-slate-400 hover:text-white' }}"
-          href="/"
+        <div
+          class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2"
         >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M4 10.5l8-6 8 6v8.5a1 1 0 0 1-1 1h-4.5a1 1 0 0 1-1-1v-4.5h-5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linejoin="round"
-            />
-          </svg>
-          <span>Home</span>
-        </a>
-        <a
-          class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if pricing_active else 'text-slate-400 hover:text-white' }}"
-          href="/pricing"
-        >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M6 7h12l-1.2 9.5a2 2 0 0 1-2 1.7H9.2a2 2 0 0 1-2-1.7z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linejoin="round"
-            />
-            <path d="M9 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-          </svg>
-          <span>Pricing</span>
-        </a>
-        <a
-          class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if about_active else 'text-slate-400 hover:text-white' }}"
-          href="/about"
-        >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6" />
-            <path d="M12 10v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-            <circle cx="12" cy="7.5" r="1" fill="currentColor" />
-          </svg>
-          <span>About</span>
-        </a>
-        <a
-          class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if subscribe_active else 'text-slate-400 hover:text-white' }}"
-          href="/subscribe"
-        >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linejoin="round"
-            />
-            <path d="M4 7l8 6 8-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-          </svg>
-          <span>Subscribe</span>
-        </a>
-      </div>
-    </nav>
+          <a
+            class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if home_active else 'text-slate-400 hover:text-white' }}"
+            href="/"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 10.5l8-6 8 6v8.5a1 1 0 0 1-1 1h-4.5a1 1 0 0 1-1-1v-4.5h-5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>Home</span>
+          </a>
+          <a
+            class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if pricing_active else 'text-slate-400 hover:text-white' }}"
+            href="/pricing"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M6 7h12l-1.2 9.5a2 2 0 0 1-2 1.7H9.2a2 2 0 0 1-2-1.7z"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+              <path d="M9 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <span>Pricing</span>
+          </a>
+          <a
+            class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if about_active else 'text-slate-400 hover:text-white' }}"
+            href="/about"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6" />
+              <path d="M12 10v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              <circle cx="12" cy="7.5" r="1" fill="currentColor" />
+            </svg>
+            <span>About</span>
+          </a>
+          <a
+            class="group flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium {{ 'text-white' if subscribe_active else 'text-slate-400 hover:text-white' }}"
+            href="/subscribe"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+              <path d="M4 7l8 6 8-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <span>Subscribe</span>
+          </a>
+        </div>
+      </nav>
+    {% endif %}
 
     <footer class="border-t border-slate-800">
       <div class="mx-auto max-w-6xl px-4 py-8 text-xs text-slate-500">
@@ -428,6 +445,17 @@
         var env = window.__appEnv || {};
         var isStandalone = Boolean(env.isStandalone);
         var isSmallScreen = Boolean(env.isMobile);
+        var isNative = Boolean(env.isNative);
+
+        if (!isNative && window.Capacitor && typeof window.Capacitor.isNativePlatform === "function") {
+          isNative = window.Capacitor.isNativePlatform();
+        } else if (!isNative && window.Capacitor) {
+          isNative = true;
+        }
+        if (isNative) {
+          isStandalone = true;
+          document.cookie = "app_client=1; path=/; SameSite=Lax";
+        }
 
         if (typeof env.isStandalone === "undefined") {
           var mediaStandalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;

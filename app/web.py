@@ -232,6 +232,7 @@ def _attach_trade_price_changes(trades: list[Trade]) -> None:
 
 def _base_context(request: Request) -> dict[str, Any]:
     settings = get_settings()
+    is_app_client = request.cookies.get("app_client") == "1"
 
     current_user = None
     csrf_token = None
@@ -244,6 +245,8 @@ def _base_context(request: Request) -> dict[str, Any]:
 
     return {
         "app_name": settings.app_name,
+        "app_only_mode": settings.app_only_mode,
+        "is_app_client": is_app_client,
         "auth_disabled": settings.auth_disabled,
         "current_user": current_user,
         "csrf_token": csrf_token,
@@ -638,6 +641,21 @@ def signup_submit(
         request.session["user"] = normalized_email
         request.session["csrf"] = secrets.token_urlsafe(32)
     return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/app/launch")
+def app_launch(request: Request) -> RedirectResponse:
+    settings = get_settings()
+    response = RedirectResponse(url="/app", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        "app_client",
+        "1",
+        max_age=60 * 60 * 24 * 365,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+    )
+    return response
 
 
 @router.get("/app", response_class=HTMLResponse)
