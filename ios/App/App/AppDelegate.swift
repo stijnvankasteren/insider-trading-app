@@ -1009,14 +1009,18 @@ struct DashboardView: View {
                     }
 
                     if let stats = dashboard?.stats {
-                        HStack(spacing: 12) {
-                            StatCard(title: "24h trades", value: "\(stats.total24h)")
-                            StatCard(title: "Top ticker", value: stats.topTicker ?? "-")
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
+                            spacing: 12
+                        ) {
+                            MiniStatCard(title: "24h trades", value: "\(stats.total24h)")
+                            MiniStatCard(title: "Top ticker", value: stats.topTicker ?? "-")
+                            MiniStatCard(title: "Latest form", value: stats.latestForm ?? "-")
                         }
                     }
 
-                    AppCard {
-                        VStack(alignment: .leading, spacing: 14) {
+                    PreviewPanel {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Preview")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(AppColors.textMuted)
@@ -1025,12 +1029,10 @@ struct DashboardView: View {
                                 title: "Latest Insider Trade",
                                 value: previewValue(for: insiderTrade())
                             )
-                            AppDivider()
                             PreviewRow(
                                 title: "Latest Congress Trade",
                                 value: previewValue(for: congressTrade())
                             )
-                            AppDivider()
                             PreviewRow(title: "Watchlist", value: "Coming next")
                         }
                     }
@@ -1608,9 +1610,17 @@ struct PreviewRow: View {
                 .font(.system(size: 12))
                 .foregroundColor(AppColors.textMuted)
             Text(value)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(AppColors.textPrimary)
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.cardSoft)
+        .cornerRadius(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1635,10 +1645,10 @@ struct AppActionButton: View {
             .frame(maxWidth: .infinity)
             .background(filled ? AppColors.accent : Color.clear)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 14)
                     .stroke(AppColors.cardBorder, lineWidth: 1)
             )
-            .cornerRadius(12)
+            .cornerRadius(14)
     }
 }
 
@@ -1969,6 +1979,34 @@ struct StatCard: View {
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
+                .stroke(AppColors.cardBorder, lineWidth: 1)
+        )
+    }
+}
+
+struct MiniStatCard: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundColor(AppColors.textMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(value)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(AppColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.card)
+        .cornerRadius(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(AppColors.cardBorder, lineWidth: 1)
         )
     }
@@ -2436,6 +2474,32 @@ struct AppCard<Content: View>: View {
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppColors.cardBorder, lineWidth: 1)
+            )
+    }
+}
+
+struct PreviewPanel<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [AppColors.cardHighlight, AppColors.card],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
                     .stroke(AppColors.cardBorder, lineWidth: 1)
             )
     }
