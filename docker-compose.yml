@@ -16,6 +16,8 @@ services:
       dockerfile: Dockerfile
     environment:
       - APP_NAME
+      - APP_ONLY_MODE
+      - WEB_UI_ENABLED
       - POSTGRES_USER
       - POSTGRES_PASSWORD
       - POSTGRES_DB
