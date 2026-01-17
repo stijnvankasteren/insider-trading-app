@@ -757,7 +757,7 @@ enum AppTab: String, CaseIterable {
     case dashboard
     case news
     case trades
-    case briefing
+    case tools
     case account
 }
 
@@ -791,12 +791,12 @@ struct MainTabView: View {
             .tag(AppTab.trades)
 
             NavigationView {
-                BriefingView()
+                ToolsView()
             }
             .tabItem {
-                Label("Briefing", systemImage: "clock.arrow.circlepath")
+                Label("Tools", systemImage: "wrench.and.screwdriver.fill")
             }
-            .tag(AppTab.briefing)
+            .tag(AppTab.tools)
 
             NavigationView {
                 AccountView()
@@ -999,8 +999,10 @@ struct SubscriptionFeatureRow: View {
 
 struct DashboardView: View {
     @State private var dashboard: DashboardResponse?
+    @State private var recentTrades: [Trade] = []
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var dashboardError: String?
+    @State private var tradesError: String?
 
     var body: some View {
         ZStack {
@@ -1074,17 +1076,19 @@ struct DashboardView: View {
                         TagPill(text: "3+ MAANDEN OUD", color: AppColors.danger)
                     }
 
-                    if isLoading {
+                    if isLoading && recentTrades.isEmpty {
                         LoadingCard()
-                    } else if let trades = dashboard?.latestTrades {
-                        ForEach(trades.prefix(6)) { trade in
+                    } else if !recentTrades.isEmpty {
+                        ForEach(recentTrades.prefix(6)) { trade in
                             NavigationLink(destination: TradeDetailBridgeView(trade: trade)) {
                                 TradeCardView(trade: trade)
                             }
                             .buttonStyle(.plain)
                         }
-                    } else if let errorMessage = errorMessage {
-                        ErrorCard(message: errorMessage)
+                    } else if let tradesError = tradesError {
+                        ErrorCard(message: tradesError)
+                    } else if let dashboardError = dashboardError {
+                        ErrorCard(message: dashboardError)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -1101,13 +1105,15 @@ struct DashboardView: View {
     }
 
     private func insiderTrade() -> Trade? {
-        dashboard?.latestTrades.first { ($0.form ?? "").uppercased().contains("FORM 4") }
-            ?? dashboard?.latestTrades.first
+        let trades = previewTrades
+        return trades.first { ($0.form ?? "").uppercased().contains("FORM 4") }
+            ?? trades.first
     }
 
     private func congressTrade() -> Trade? {
-        dashboard?.latestTrades.first { ($0.form ?? "").uppercased().contains("CONGRESS") }
-            ?? dashboard?.latestTrades.dropFirst().first
+        let trades = previewTrades
+        return trades.first { ($0.form ?? "").uppercased().contains("CONGRESS") }
+            ?? trades.dropFirst().first
     }
 
     private func previewValue(for trade: Trade?) -> String {
@@ -1115,14 +1121,43 @@ struct DashboardView: View {
         return "\(trade.displayTicker) — \(trade.buySellLabel) — \(trade.displayAmount)"
     }
 
+    private var previewTrades: [Trade] {
+        if let dashboardTrades = dashboard?.latestTrades, !dashboardTrades.isEmpty {
+            return dashboardTrades
+        }
+        return recentTrades
+    }
+
     private func loadDashboard() async {
         isLoading = true
         defer { isLoading = false }
+        dashboardError = nil
+        tradesError = nil
+
         do {
-            dashboard = try await APIClient.shared.request("api/dashboard")
-            errorMessage = nil
+            let response: DashboardResponse = try await APIClient.shared.request("api/dashboard")
+            dashboard = response
+            recentTrades = response.latestTrades
+        } catch let error as APIError {
+            dashboard = nil
+            dashboardError = error.message
         } catch {
-            errorMessage = "Kon dashboard niet laden."
+            dashboard = nil
+            dashboardError = "Kon dashboard niet laden."
+        }
+
+        if recentTrades.isEmpty {
+            do {
+                let response: TradesResponse = try await APIClient.shared.request(
+                    "api/trades",
+                    query: ["limit": "20"]
+                )
+                recentTrades = response.items
+            } catch let error as APIError {
+                tradesError = error.message
+            } catch {
+                tradesError = "Kon transacties niet laden."
+            }
         }
     }
 }
@@ -1286,54 +1321,35 @@ enum TradeFilter: String, CaseIterable {
     }
 }
 
-struct BriefingView: View {
-    @State private var watchlist: WatchlistResponse?
-    @State private var isLoading = false
-
+struct ToolsView: View {
     var body: some View {
         ZStack {
             AppScreenBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Briefing")
+                    Text("Tools")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(AppColors.textPrimary)
 
-                    if isLoading {
-                        LoadingCard()
-                    } else if let watchlist = watchlist {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Watchlist")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(AppColors.textPrimary)
+                    Text("Kies een tool om data te verkennen.")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppColors.textSecondary)
 
-                            ForEach(watchlist.items.prefix(5)) { item in
-                                HStack {
-                                    Text(item.label ?? item.value)
-                                        .foregroundColor(AppColors.textSecondary)
-                                    Spacer()
-                                    Text(item.kind.uppercased())
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(AppColors.accent)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(AppColors.card)
-                                .cornerRadius(14)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(AppColors.cardBorder, lineWidth: 1)
-                                )
-                            }
+                    VStack(alignment: .leading, spacing: 12) {
+                        NavigationLink(destination: PeopleListView()) {
+                            ToolRow(title: "People", icon: "person.3.fill")
                         }
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Laatste signalen")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(AppColors.textPrimary)
-                            ForEach(watchlist.trades.prefix(5)) { trade in
-                                TradeCardView(trade: trade)
-                            }
+                        NavigationLink(destination: FormsHubView()) {
+                            ToolRow(title: "Forms", icon: "doc.text.fill")
+                        }
+                        NavigationLink(destination: PortfolioView()) {
+                            ToolRow(title: "Portfolio", icon: "chart.pie.fill")
+                        }
+                        NavigationLink(destination: PricesView()) {
+                            ToolRow(title: "Prices", icon: "waveform.path.ecg")
+                        }
+                        NavigationLink(destination: WatchlistView()) {
+                            ToolRow(title: "Watchlist", icon: "star.fill")
                         }
                     }
                 }
@@ -1342,22 +1358,6 @@ struct BriefingView: View {
             }
         }
         .navigationBarHidden(true)
-        .task {
-            await loadWatchlist()
-        }
-        .refreshable {
-            await loadWatchlist()
-        }
-    }
-
-    private func loadWatchlist() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            watchlist = try await APIClient.shared.request("api/watchlist")
-        } catch {
-            watchlist = nil
-        }
     }
 }
 
@@ -1396,28 +1396,6 @@ struct AccountView: View {
                     }
 
                     SettingsCard()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Tools")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(AppColors.textPrimary)
-
-                        NavigationLink(destination: PeopleListView()) {
-                            ToolRow(title: "People", icon: "person.3.fill")
-                        }
-                        NavigationLink(destination: FormsHubView()) {
-                            ToolRow(title: "Forms", icon: "doc.text.fill")
-                        }
-                        NavigationLink(destination: PortfolioView()) {
-                            ToolRow(title: "Portfolio", icon: "chart.pie.fill")
-                        }
-                        NavigationLink(destination: PricesView()) {
-                            ToolRow(title: "Prices", icon: "waveform.path.ecg")
-                        }
-                        NavigationLink(destination: WatchlistView()) {
-                            ToolRow(title: "Watchlist", icon: "star.fill")
-                        }
-                    }
 
                     Button {
                         Task { await session.logout() }
