@@ -65,8 +65,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 enum AppColors {
     static let background = Color(red: 0.02, green: 0.02, blue: 0.02)
+    static let backgroundTop = Color(red: 0.03, green: 0.04, blue: 0.1)
+    static let backgroundBottom = Color(red: 0.01, green: 0.01, blue: 0.03)
     static let card = Color(red: 0.09, green: 0.09, blue: 0.09)
     static let cardSoft = Color(red: 0.12, green: 0.12, blue: 0.12)
+    static let cardHighlight = Color(red: 0.13, green: 0.14, blue: 0.18)
+    static let cardBorder = Color(red: 0.18, green: 0.2, blue: 0.28)
     static let accent = Color(red: 0.82, green: 0.68, blue: 0.2)
     static let accentStrong = Color(red: 0.9, green: 0.75, blue: 0.2)
     static let textPrimary = Color.white
@@ -91,12 +95,31 @@ enum AppConfig {
     }
 }
 
+struct AppScreenBackground: View {
+    var body: some View {
+        LinearGradient(
+            colors: [AppColors.backgroundTop, AppColors.backgroundBottom],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay(
+            RadialGradient(
+                colors: [AppColors.accent.opacity(0.08), Color.clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 420
+            )
+        )
+        .ignoresSafeArea()
+    }
+}
+
 struct AppRootView: View {
     @StateObject private var session = AppSession()
 
     var body: some View {
         ZStack {
-            AppColors.background.ignoresSafeArea()
+            AppScreenBackground()
             if session.isLoading {
                 SplashView()
             } else if session.isAuthenticated {
@@ -609,7 +632,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            NavigationStack {
+            NavigationView {
                 DashboardView()
             }
             .tabItem {
@@ -617,7 +640,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.dashboard)
 
-            NavigationStack {
+            NavigationView {
                 NewsView()
             }
             .tabItem {
@@ -625,7 +648,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.news)
 
-            NavigationStack {
+            NavigationView {
                 TradesView()
             }
             .tabItem {
@@ -633,7 +656,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.trades)
 
-            NavigationStack {
+            NavigationView {
                 BriefingView()
             }
             .tabItem {
@@ -641,7 +664,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.briefing)
 
-            NavigationStack {
+            NavigationView {
                 AccountView()
             }
             .tabItem {
@@ -659,57 +682,92 @@ struct DashboardView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
+        ZStack {
+            AppScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
                     HStack(spacing: 12) {
                         AppLogoMark()
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Wolf of Washington")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundColor(AppColors.textPrimary)
-                            Text("Volg het geld in de politiek")
-                                .font(.system(size: 13))
-                                .foregroundColor(AppColors.textSecondary)
-                        }
                         Spacer()
                         Image(systemName: "bell.fill")
                             .foregroundColor(AppColors.accent)
+                            .padding(10)
+                            .background(AppColors.cardSoft)
+                            .cornerRadius(12)
                     }
-                }
 
-                if let stats = dashboard?.stats {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Alternative market data, made usable.")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(AppColors.textPrimary)
+                        Text("Track insider trades, congress trades, filings, and other signals in one fast dashboard.")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+
                     HStack(spacing: 12) {
-                        StatCard(title: "24h trades", value: "\(stats.total24h)")
-                        StatCard(title: "Top ticker", value: stats.topTicker ?? "-")
-                    }
-                }
-
-                HStack {
-                    Text("Recente transacties")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(AppColors.textPrimary)
-                    Spacer()
-                    TagPill(text: "3+ MAANDEN OUD", color: AppColors.danger)
-                }
-
-                if isLoading {
-                    LoadingCard()
-                } else if let trades = dashboard?.latestTrades {
-                    ForEach(trades.prefix(6)) { trade in
-                        NavigationLink(destination: TradeDetailBridgeView(trade: trade)) {
-                            TradeCardView(trade: trade)
+                        NavigationLink(destination: TradesView()) {
+                            AppActionButton(title: "Explore data", filled: true)
+                        }
+                        .buttonStyle(.plain)
+                        NavigationLink(destination: WatchlistView()) {
+                            AppActionButton(title: "Watchlist", filled: false)
                         }
                         .buttonStyle(.plain)
                     }
-                } else if let errorMessage = errorMessage {
-                    ErrorCard(message: errorMessage)
+
+                    if let stats = dashboard?.stats {
+                        HStack(spacing: 12) {
+                            StatCard(title: "24h trades", value: "\(stats.total24h)")
+                            StatCard(title: "Top ticker", value: stats.topTicker ?? "-")
+                        }
+                    }
+
+                    AppCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Preview")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(AppColors.textMuted)
+
+                            PreviewRow(
+                                title: "Latest Insider Trade",
+                                value: previewValue(for: insiderTrade())
+                            )
+                            AppDivider()
+                            PreviewRow(
+                                title: "Latest Congress Trade",
+                                value: previewValue(for: congressTrade())
+                            )
+                            AppDivider()
+                            PreviewRow(title: "Watchlist", value: "Coming next")
+                        }
+                    }
+
+                    HStack {
+                        Text("Recente transacties")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(AppColors.textPrimary)
+                        Spacer()
+                        TagPill(text: "3+ MAANDEN OUD", color: AppColors.danger)
+                    }
+
+                    if isLoading {
+                        LoadingCard()
+                    } else if let trades = dashboard?.latestTrades {
+                        ForEach(trades.prefix(6)) { trade in
+                            NavigationLink(destination: TradeDetailBridgeView(trade: trade)) {
+                                TradeCardView(trade: trade)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else if let errorMessage = errorMessage {
+                        ErrorCard(message: errorMessage)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
-        .background(AppColors.background)
         .navigationBarHidden(true)
         .task {
             await loadDashboard()
@@ -717,6 +775,21 @@ struct DashboardView: View {
         .refreshable {
             await loadDashboard()
         }
+    }
+
+    private func insiderTrade() -> Trade? {
+        dashboard?.latestTrades.first { ($0.form ?? "").uppercased().contains("FORM 4") }
+            ?? dashboard?.latestTrades.first
+    }
+
+    private func congressTrade() -> Trade? {
+        dashboard?.latestTrades.first { ($0.form ?? "").uppercased().contains("CONGRESS") }
+            ?? dashboard?.latestTrades.dropFirst().first
+    }
+
+    private func previewValue(for trade: Trade?) -> String {
+        guard let trade = trade else { return "Coming soon" }
+        return "\(trade.displayTicker) — \(trade.buySellLabel) — \(trade.displayAmount)"
     }
 
     private func loadDashboard() async {
@@ -793,29 +866,39 @@ struct TradesView: View {
     @State private var isLoading = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Recente Transacties")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundColor(AppColors.textPrimary)
-
-                SearchBar(text: $query, placeholder: "Zoek politici of aandelen") {
-                    Task { await loadTrades() }
-                }
-
-                FilterPills(selected: $selectedFilter)
-
-                ForEach(trades) { trade in
-                    NavigationLink(destination: TradeDetailBridgeView(trade: trade)) {
-                        TradeCardView(trade: trade)
+        ZStack {
+            AppScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .center, spacing: 12) {
+                        Text("Recente Transacties")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(AppColors.textPrimary)
+                        Spacer()
+                        TagPill(text: "3+ MAANDEN OUD", color: AppColors.danger)
                     }
-                    .buttonStyle(.plain)
+
+                    SearchBar(text: $query, placeholder: "Zoek politici of aandelen") {
+                        Task { await loadTrades() }
+                    }
+
+                    FilterPills(selected: $selectedFilter)
+
+                    if isLoading {
+                        LoadingCard()
+                    }
+
+                    ForEach(trades) { trade in
+                        NavigationLink(destination: TradeDetailBridgeView(trade: trade)) {
+                            TradeCardView(trade: trade)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
-        .background(AppColors.background)
         .navigationBarHidden(true)
         .task {
             await loadTrades()
