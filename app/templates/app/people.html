@@ -1,6 +1,6 @@
 {% extends "app/_layout.html" %}
 {% block app_content %}
-  <form method="get" class="rounded-xl border border-slate-800 bg-slate-900/20 p-4">
+  <form method="get" class="app-card rounded-xl border border-slate-800 bg-slate-900/20 p-4">
     <label class="text-xs text-slate-400">Search by name</label>
     <div class="mt-1 flex flex-wrap gap-2">
       <input
@@ -34,7 +34,7 @@
     {% set return_url = return_url ~ '?' ~ request.url.query %}
   {% endif %}
 
-  <div class="mt-6 overflow-hidden rounded-xl border border-slate-800">
+  <div class="mt-6 overflow-hidden rounded-xl border border-slate-800 app-card">
     <div class="border-b border-slate-800 bg-slate-900/40 px-4 py-3 text-sm font-medium">
       People
     </div>

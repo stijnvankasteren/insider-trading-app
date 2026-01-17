@@ -11,7 +11,219 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
+:root {
+  --app-bg: #070707;
+  --app-surface: #141414;
+  --app-border: #2a2a2a;
+  --app-muted: #9b9b9b;
+  --app-accent: #d6b048;
+  --app-success: #3bd671;
+  --app-danger: #ff5b55;
+}
+
 @media (max-width: 639px) {
+  html.is-standalone body.app-shell {
+    background:
+      radial-gradient(1000px 600px at 15% -10%, rgba(214, 176, 72, 0.14), transparent 60%),
+      radial-gradient(900px 500px at 85% 0%, rgba(255, 255, 255, 0.06), transparent 55%),
+      var(--app-bg);
+    color: #f8f8f8;
+    font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  html.is-standalone body.app-shell main {
+    padding-top: 1.5rem;
+  }
+
+  html.is-standalone body.app-shell h1 {
+    font-size: 2.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  html.is-standalone body.app-shell h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  html.is-standalone body.app-shell .rounded-xl {
+    border-radius: 22px;
+  }
+
+  html.is-standalone body.app-shell .rounded-md {
+    border-radius: 14px;
+  }
+
+  html.is-standalone body.app-shell .border-slate-800 {
+    border-color: var(--app-border) !important;
+  }
+
+  html.is-standalone body.app-shell .border-slate-700 {
+    border-color: #343434 !important;
+  }
+
+  html.is-standalone body.app-shell .bg-slate-900\/20,
+  html.is-standalone body.app-shell .bg-slate-900\/30,
+  html.is-standalone body.app-shell .bg-slate-900\/40 {
+    background-color: var(--app-surface) !important;
+  }
+
+  html.is-standalone body.app-shell .bg-slate-950 {
+    background-color: transparent !important;
+  }
+
+  html.is-standalone body.app-shell .text-slate-400 {
+    color: var(--app-muted) !important;
+  }
+
+  html.is-standalone body.app-shell .text-slate-300 {
+    color: #d0d0d0 !important;
+  }
+
+  html.is-standalone body.app-shell .text-slate-500 {
+    color: #8b8b8b !important;
+  }
+
+  html.is-standalone body.app-shell .bg-white {
+    background-color: var(--app-accent) !important;
+  }
+
+  html.is-standalone body.app-shell .text-slate-900 {
+    color: #1a1a1a !important;
+  }
+
+  html.is-standalone body.app-shell input,
+  html.is-standalone body.app-shell select,
+  html.is-standalone body.app-shell textarea {
+    background-color: #161616 !important;
+    border-color: #2b2b2b !important;
+    color: #f3f3f3 !important;
+  }
+
+  html.is-standalone body.app-shell input::placeholder {
+    color: #6f6f6f;
+  }
+
+  html.is-standalone body.app-shell .app-card {
+    border-radius: 22px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    padding: 1rem;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  html.is-standalone body.app-shell .app-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: #1c1c1c;
+    border: 1px solid #2a2a2a;
+    color: var(--app-muted);
+  }
+
+  html.is-standalone body.app-shell .app-pill-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  html.is-standalone body.app-shell .app-pill-icon {
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.08);
+    color: currentColor;
+  }
+
+  html.is-standalone body.app-shell .app-pill-buy {
+    color: var(--app-success);
+  }
+
+  html.is-standalone body.app-shell .app-pill-sell {
+    color: var(--app-danger);
+  }
+
+  html.is-standalone body.app-shell .app-pill-neutral {
+    color: var(--app-muted);
+  }
+
+  html.is-standalone body.app-shell .app-avatar {
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 999px;
+    background: #212121;
+    border: 2px solid #2e2e2e;
+    color: var(--app-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  html.is-standalone body.app-shell .app-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    background: rgba(214, 176, 72, 0.16);
+    border: 1px solid rgba(214, 176, 72, 0.5);
+    color: var(--app-accent);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  html.is-standalone #bottom-nav-app {
+    background: rgba(8, 8, 8, 0.95);
+    border-color: #1f1f1f;
+  }
+
+  html.is-standalone #bottom-nav-app .app-nav-item {
+    color: #7a7a7a;
+  }
+
+  html.is-standalone #bottom-nav-app .app-nav-item[data-active="true"] {
+    color: var(--app-accent);
+  }
+
+  html.is-standalone #bottom-nav-app .app-nav-icon {
+    display: grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 999px;
+    background: #151515;
+    border: 1px solid #232323;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  html.is-standalone #bottom-nav-app .app-nav-item[data-active="true"] .app-nav-icon {
+    background: rgba(214, 176, 72, 0.2);
+    border-color: rgba(214, 176, 72, 0.6);
+    box-shadow: 0 0 0 3px rgba(214, 176, 72, 0.14);
+  }
+
+  html.is-standalone #bottom-nav-app .app-nav-item span:last-child {
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+  }
+
   html.is-standalone .site-header {
     display: none !important;
   }
